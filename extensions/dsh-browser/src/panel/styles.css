@@ -5,30 +5,31 @@
      it. Only type scales: the px-based spacing and icon sizes stay put, which
      keeps the narrow panel's layout intact at large sizes. */
   --ui-scale: 1;
-  --canvas: #f4f6fa;
-  --canvas-deep: #edf0f6;
+  --canvas: #f9fafb;
+  --canvas-deep: #ebeef2;
   --surface: #ffffff;
-  --ink: #182033;
-  --ink-strong: #101828;
-  --muted: #667085;
-  --faint: #98a2b3;
-  --line: #dce2ec;
-  --line-strong: #cbd3e1;
-  --blue: #4d6bfe;
-  --blue-hover: #3c57e8;
-  --blue-ink: #2945c7;
-  --blue-soft: #e9eeff;
-  --blue-wash: #f6f8ff;
-  --navy: #172033;
-  --danger: #b42318;
-  --danger-soft: #fff4f2;
-  --danger-border: #fecdca;
-  --warning: #d08a17;
-  --security: #8a5a00;
-  --security-soft: #fffaeb;
-  --security-border: #fedf89;
-  --shadow: 0 10px 28px rgba(23, 32, 51, 0.08), 0 2px 6px rgba(23, 32, 51, 0.04);
-  --focus-ring: 0 0 0 3px rgba(77, 107, 254, 0.18);
+  --ink: #0f1115;
+  --ink-strong: #0f1115;
+  --muted: #61666b;
+  --faint: #81858c;
+  --line: #0000001a;
+  --line-strong: #00000029;
+  --blue: #4176e6;
+  --blue-hover: #7aaaff;
+  --blue-ink: #4176e6;
+  --blue-soft: #26314824;
+  --blue-wash: #2631480f;
+  --navy: #0f1115;
+  --danger: #ec1313;
+  --danger-soft: #ec13130d;
+  --danger-border: color-mix(in srgb, #ec1313 28%, transparent);
+  --warning: #f59e0b;
+  --security: #dd8629;
+  --security-soft: #fef5e7;
+  --security-border: #f7ad31;
+  --shadow: 0 0 0 0.5px #00000029, 0 3px 8px 0 #00000008, 0 0 16px 0 #00000005;
+  --elevation-prominent: 0 0 0 0.5px #00000029, 0 3px 8px 0 #0000000a, 0 0 20px 0 #0000000d;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, #4176e6 28%, transparent);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: calc(14px * var(--ui-scale));
   font-synthesis: none;
@@ -37,7 +38,7 @@
 
 * {
   box-sizing: border-box;
-  scrollbar-color: #bcc4d2 transparent;
+  scrollbar-color: color-mix(in srgb, var(--ink) 32%, transparent) transparent;
   scrollbar-width: thin;
 }
 
@@ -77,7 +78,7 @@ textarea:focus-visible {
 }
 
 ::selection {
-  background: rgba(77, 107, 254, 0.2);
+  background: rgba(65, 118, 230, 0.2);
 }
 
 ::-webkit-scrollbar {
@@ -92,7 +93,7 @@ textarea:focus-visible {
 ::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
   border-radius: 999px;
-  background: #bcc4d2;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
   background-clip: padding-box;
 }
 
@@ -115,8 +116,8 @@ textarea:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(203, 211, 225, 0.72);
-  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--canvas) 92%, transparent);
 }
 
 .tab-affinity {
@@ -125,10 +126,10 @@ textarea:focus-visible {
   margin: 10px 12px 0;
   overflow: hidden;
   padding: 12px 13px 12px 16px;
-  border: 1px solid #eadbbd;
-  border-radius: 13px;
-  background: #fffdf8;
-  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.05);
+  border: 1px solid var(--security-border);
+  border-radius: 12px;
+  background: var(--security-soft);
+  box-shadow: 0 1px 2px rgba(15, 17, 21, 0.05);
 }
 
 .tab-affinity::before {
@@ -140,8 +141,8 @@ textarea:focus-visible {
 }
 
 .tab-affinity.background {
-  border-color: #dce3ff;
-  background: #f9faff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+  background: var(--blue-wash);
 }
 
 .tab-affinity.background::before {
@@ -149,8 +150,8 @@ textarea:focus-visible {
 }
 
 .tab-affinity.lost {
-  border-color: #f3d0cc;
-  background: #fffafa;
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
 }
 
 .tab-affinity.lost::before {
@@ -217,7 +218,7 @@ textarea:focus-visible {
   border: 2px solid #fff;
   border-radius: 50%;
   background: var(--blue);
-  box-shadow: 0 0 0 1px #aebdff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 35%, transparent);
   content: "";
 }
 
@@ -240,7 +241,7 @@ textarea:focus-visible {
 }
 
 .tab-affinity-node.active::before {
-  background: #22a06b;
+  background: #22c55e;
   box-shadow: 0 0 0 1px #8dd8b8;
 }
 
@@ -304,7 +305,7 @@ textarea:focus-visible {
 }
 
 .tab-affinity-actions .keep:hover {
-  border-color: #b6c0d0;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
   background: #f8fafc;
 }
 
@@ -329,7 +330,7 @@ textarea:focus-visible {
 }
 
 .tab-affinity-actions .keep-always:hover {
-  border-color: #b6c0d0;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
   background: var(--surface);
   color: var(--ink);
 }
@@ -451,7 +452,7 @@ textarea:focus-visible {
 }
 
 .dot.connected {
-  background: #22a06b;
+  background: #22c55e;
   box-shadow: 0 0 0 3px rgba(34, 160, 107, 0.12);
 }
 
@@ -588,9 +589,9 @@ textarea:focus-visible {
 }
 
 .scroll-to-bottom:hover {
-  border-color: #aebcff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
   color: var(--ink-strong);
-  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.1), var(--shadow);
+  box-shadow: var(--focus-ring), var(--shadow);
 }
 
 .scroll-to-bottom:active {
@@ -621,10 +622,10 @@ textarea:focus-visible {
   width: 58px;
   height: 58px;
   place-items: center;
-  border: 1px solid #d7dfff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 19px;
   background: var(--blue-soft);
-  box-shadow: 0 10px 26px rgba(77, 107, 254, 0.13);
+  box-shadow: 0 10px 26px rgba(65, 118, 230, 0.13);
 }
 
 .empty-logo img {
@@ -653,19 +654,19 @@ textarea:focus-visible {
 .empty button {
   min-height: 36px;
   padding: 8px 14px;
-  border: 1px solid #ced8ff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 11px;
   background: var(--surface);
   color: var(--blue-ink);
   cursor: pointer;
   font-size: calc(11.5px * var(--ui-scale));
   font-weight: 680;
-  box-shadow: 0 4px 12px rgba(23, 32, 51, 0.05);
+  box-shadow: 0 4px 12px rgba(15, 17, 21, 0.05);
   transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
 }
 
 .empty button:hover:not(:disabled) {
-  border-color: #aebeff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
   background: var(--blue-wash);
   transform: translateY(-1px);
 }
@@ -707,11 +708,11 @@ textarea:focus-visible {
 .row.user .body {
   max-width: 86%;
   padding: 10px 13px;
-  border: 1px solid #d7dfff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 15px 15px 5px 15px;
   background: var(--blue-soft);
   color: #24345e;
-  box-shadow: 0 2px 8px rgba(77, 107, 254, 0.05);
+  box-shadow: 0 2px 8px rgba(65, 118, 230, 0.05);
 }
 
 .row.assistant {
@@ -728,7 +729,7 @@ textarea:focus-visible {
   border: 1px solid #d8e0ff;
   border-radius: 9px;
   background: var(--surface);
-  box-shadow: 0 3px 10px rgba(23, 32, 51, 0.06);
+  box-shadow: 0 3px 10px rgba(15, 17, 21, 0.06);
 }
 
 .assistant-avatar img {
@@ -869,7 +870,7 @@ textarea:focus-visible {
 }
 
 .tool-activity.running {
-  border-color: #ccd6ff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
   background: var(--blue-wash);
 }
 
@@ -1040,14 +1041,14 @@ textarea:focus-visible {
   color: var(--blue-ink);
   font-weight: 550;
   text-decoration: underline;
-  text-decoration-color: #aebcff;
+  text-decoration-color: color-mix(in srgb, var(--blue) 35%, transparent);
   text-underline-offset: 3px;
 }
 
 .row .body.md blockquote {
   margin: 9px 0;
   padding: 3px 0 3px 11px;
-  border-left: 3px solid #b8c5ff;
+  border-left: 3px solid color-mix(in srgb, var(--blue) 35%, transparent);
   color: var(--muted);
 }
 
@@ -1094,7 +1095,7 @@ textarea:focus-visible {
   margin: 0 12px 8px;
   padding: 14px;
   overflow-y: auto;
-  border: 1px solid #ccd6ff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 16px;
   background: var(--surface);
   box-shadow: 0 10px 28px rgba(35, 52, 94, 0.12), 0 2px 6px rgba(35, 52, 94, 0.05);
@@ -1113,7 +1114,7 @@ textarea:focus-visible {
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid #ced8ff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 10px;
   background: var(--blue-soft);
   color: var(--blue-ink);
@@ -1247,7 +1248,7 @@ textarea:focus-visible {
 }
 
 .question-option.checked {
-  border-color: #aebeff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
   background: var(--blue-wash);
 }
 
@@ -1329,7 +1330,7 @@ textarea:focus-visible {
   border: 1px solid var(--blue);
   background: var(--blue);
   color: #fff;
-  box-shadow: 0 5px 14px rgba(77, 107, 254, 0.16);
+  box-shadow: 0 5px 14px rgba(65, 118, 230, 0.16);
 }
 
 .question-actions .secondary {
@@ -1348,7 +1349,7 @@ textarea:focus-visible {
 }
 
 .question-actions .secondary:hover:not(:disabled) {
-  border-color: #adb7c7;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
   color: var(--ink);
 }
 
@@ -1403,15 +1404,15 @@ textarea:focus-visible {
 .composer-box {
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  border-radius: 17px;
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: var(--shadow);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .composer-box:focus-within {
-  border-color: #aebcff;
-  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.1), var(--shadow);
+  border-color: color-mix(in srgb, var(--blue) 45%, transparent);
+  box-shadow: var(--focus-ring), var(--shadow);
 }
 
 /* Page selection: the quote the user attached, in the composer and in the
@@ -1433,7 +1434,7 @@ textarea:focus-visible {
   overflow: hidden;
   margin: 0;
   padding: 1px 0 1px 9px;
-  border-left: 3px solid #b8c5ff;
+  border-left: 3px solid color-mix(in srgb, var(--blue) 35%, transparent);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   color: var(--muted);
@@ -1460,7 +1461,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 4px;
   padding: 2px 4px 2px 7px;
-  border: 1px solid #d7dfff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 999px;
   background: var(--blue-wash);
   color: var(--blue-ink);
@@ -1645,7 +1646,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
-  box-shadow: 0 10px 28px rgba(18, 28, 56, 0.12);
+  box-shadow: var(--elevation-prominent);
 }
 
 .composer-model-group + .composer-model-group {
@@ -1738,11 +1739,11 @@ textarea:focus-visible {
   padding: 0;
   place-items: center;
   border: 1px solid var(--blue);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--blue);
   color: #ffffff;
   cursor: pointer;
-  box-shadow: 0 4px 10px rgba(77, 107, 254, 0.22);
+  box-shadow: 0 4px 10px rgba(65, 118, 230, 0.22);
   transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
@@ -1766,7 +1767,7 @@ textarea:focus-visible {
   width: 27px;
   height: 27px;
   border-color: transparent;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
   box-shadow: none;
@@ -1793,8 +1794,8 @@ textarea:focus-visible {
 }
 
 .composer-actions button.stop-button:hover:not(:disabled) {
-  border-color: #29334a;
-  background: #29334a;
+  border-color: color-mix(in srgb, var(--navy) 85%, var(--canvas));
+  background: color-mix(in srgb, var(--navy) 85%, var(--canvas));
 }
 
 .stop-glyph {
@@ -1871,20 +1872,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 6px 18px rgba(23, 32, 51, 0.05);
-}
-
-.update-card {
-  position: relative;
-  display: flex;
-  overflow: hidden;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #d5ddfb;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #ffffff 0%, var(--blue-wash) 100%);
-  box-shadow: 0 7px 20px rgba(41, 69, 199, 0.07);
+  box-shadow: 0 6px 18px rgba(15, 17, 21, 0.05);
 }
 
 .update-card::before {
@@ -1950,7 +1938,7 @@ textarea:focus-visible {
 }
 
 .install-pill.install-managed {
-  border-color: #ccd6ff;
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
   color: var(--blue-ink);
 }
 
@@ -1960,14 +1948,14 @@ textarea:focus-visible {
 }
 
 .install-pill.install-unknown {
-  border-color: #ead9ae;
+  border-color: var(--security-border);
   color: var(--security);
 }
 
 .version-pill {
   flex: 0 0 auto;
   padding: 4px 7px;
-  border: 1px solid #ccd6ff;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.85);
   color: var(--blue-ink);
@@ -2011,7 +1999,7 @@ textarea:focus-visible {
   border: 2px solid #ffffff;
   border-radius: 50%;
   background: var(--blue);
-  box-shadow: 0 0 0 2px rgba(77, 107, 254, 0.18);
+  box-shadow: 0 0 0 2px rgba(65, 118, 230, 0.18);
 }
 
 .update-checking .update-beacon {
@@ -2040,7 +2028,7 @@ textarea:focus-visible {
   align-items: start;
   gap: 8px;
   padding: 9px 10px;
-  border: 1px solid #ead9ae;
+  border: 1px solid var(--security-border);
   border-radius: 10px;
   background: #fffaf0;
   color: var(--security);
@@ -2091,7 +2079,7 @@ textarea:focus-visible {
 }
 
 .update-check:hover:not(:disabled) {
-  border-color: #adb7c7;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
 }
 
 .update-copy {
@@ -2112,8 +2100,8 @@ textarea:focus-visible {
 }
 
 @keyframes update-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(77, 107, 254, 0.16); }
-  50% { box-shadow: 0 0 0 5px rgba(77, 107, 254, 0.05); }
+  0%, 100% { box-shadow: 0 0 0 2px rgba(65, 118, 230, 0.16); }
+  50% { box-shadow: 0 0 0 5px rgba(65, 118, 230, 0.05); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2195,7 +2183,7 @@ textarea:focus-visible {
   border: 1px solid #b8c1cf;
   border-radius: 999px;
   background: #cfd5df;
-  box-shadow: inset 0 1px 2px rgba(23, 32, 51, 0.08);
+  box-shadow: inset 0 1px 2px rgba(15, 17, 21, 0.08);
   transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -2207,7 +2195,7 @@ textarea:focus-visible {
   height: 15px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 1px 3px rgba(23, 32, 51, 0.25);
+  box-shadow: 0 1px 3px rgba(15, 17, 21, 0.25);
   transition: transform 150ms ease;
 }
 
@@ -2246,7 +2234,7 @@ textarea:focus-visible {
 
 .settings input:hover,
 .settings select:hover {
-  border-color: #adb7c7;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
 }
 
 .settings input:focus,
@@ -2276,7 +2264,7 @@ textarea:focus-visible {
   border: 1px solid var(--blue);
   background: var(--blue);
   color: #ffffff;
-  box-shadow: 0 5px 14px rgba(77, 107, 254, 0.18);
+  box-shadow: 0 5px 14px rgba(65, 118, 230, 0.18);
 }
 
 .settings-actions .secondary {
@@ -2295,7 +2283,7 @@ textarea:focus-visible {
 }
 
 .settings-actions .secondary:hover {
-  border-color: #adb7c7;
+  border-color: color-mix(in srgb, var(--ink) 32%, transparent);
   color: var(--ink);
 }
 
@@ -2314,7 +2302,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 6px 18px rgba(23, 32, 51, 0.05);
+  box-shadow: 0 6px 18px rgba(15, 17, 21, 0.05);
 }
 
 .trusted-origins > div:first-child {
@@ -2436,7 +2424,7 @@ textarea:focus-visible {
   right: 0;
   left: 0;
   height: 5px;
-  background: repeating-linear-gradient(135deg, #fdb022 0 8px, #1d2939 8px 16px);
+  background: repeating-linear-gradient(135deg, #f7ad31 0 8px, #1d2939 8px 16px);
 }
 
 .approval-heading {
@@ -2580,7 +2568,7 @@ textarea:focus-visible {
 
 .approval-actions .session-trust:hover,
 .approval-actions .read-always:hover {
-  border-color: #fdb022;
+  border-color: #f7ad31;
   background: #fff4d6;
 }
 
@@ -2820,7 +2808,7 @@ textarea:focus-visible {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 6px 18px rgba(23, 32, 51, 0.05);
+  box-shadow: 0 6px 18px rgba(15, 17, 21, 0.05);
 }
 
 .relay-heading {
@@ -3094,3 +3082,331 @@ textarea:focus-visible {
   background: var(--canvas);
   color: var(--ink-strong);
 }
+
+/* @标签页 tab mentions (local feature) */
+.composer-box { position: relative; }
+/* .composer-box clips its children by default; the picker floats above the
+ * composer, so overflow must be visible while it is open. */
+.composer-box:has(.tab-mention-picker),
+.composer-box:has(.composer-model-menu) { overflow: visible; }
+.tab-mentions { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 4px 6px; }
+.tab-mentions.attached { margin: 6px 2px; }
+.tab-mention { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 10px; background: var(--blue-wash); color: var(--blue-ink); font-size: 12px; line-height: 18px; overflow: hidden; }
+.tab-mention .tab-mention-at { font-weight: 700; }
+.tab-mention button { border: 0; background: none; padding: 0 2px; color: inherit; cursor: pointer; font-size: 13px; }
+.tab-mention-picker { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 40; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--elevation-prominent); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.tab-mention-picker-head { padding: 2px 8px 4px; font-size: 11px; color: var(--faint); }
+.tab-mention-option { display: flex; flex-direction: column; gap: 1px; border: 0; background: none; padding: 6px 8px; border-radius: 6px; text-align: left; cursor: pointer; }
+.tab-mention-option:hover { background: var(--blue-wash); }
+/* High-contrast keyboard highlight: solid brand blue with white text. */
+.tab-mention-option.highlighted { background: var(--blue); }
+.tab-mention-option.highlighted .tab-mention-option-title,
+.tab-mention-option.highlighted .tab-mention-option-url { color: #fff; }
+.tab-mention-option.highlighted .tab-mention-option-url { color: rgba(255, 255, 255, 0.78); }
+.tab-mention-option-title { font-size: 13px; color: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-mention-option-url { font-size: 11px; color: var(--faint); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-mention-empty { padding: 8px; font-size: 12px; color: var(--faint); }
+
+/* ── 主题:黑夜模式变量组(local feature) ─────────────────────────────── */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #1b1b1c;            /* specific sidebar fill */
+  --canvas-deep: #43454a;       /* ghost active fill */
+  --surface: #2c2c2e;           /* bg layer 2 / floating fill */
+  --ink: #f9fafb;               /* label primary */
+  --ink-strong: #f9fafb;
+  --muted: #cfd3d6;             /* label secondary */
+  --faint: #adb2b8;             /* label tertiary */
+  --line: #ffffff1f;            /* border l2 */
+  --line-strong: #ffffff33;     /* border l4 */
+  --blue: #7aaaff;              /* info fill */
+  --blue-hover: #4176e6;        /* info hover */
+  --blue-ink: #7aaaff;
+  --blue-soft: #ffffff3d;       /* interactive hover accent */
+  --blue-wash: #ffffff14;       /* interactive hover */
+  --navy: #43454a;              /* elevated fill for the stop button */
+  --danger: #f25a5a;
+  --danger-soft: #f25a5a26;
+  --danger-border: color-mix(in srgb, #f25a5a 32%, transparent);
+  --warning: #f59e0b;
+  --security: #dd8629;
+  --security-soft: #27241f;
+  --security-border: #f7ad31;
+  --shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 3px 8px 0 #00000059, 0 0 16px 0 #00000040;
+  --elevation-prominent: 0 0 0 0.5px rgba(255, 255, 255, 0.2), 0 3px 8px 0 #00000059, 0 0 20px 0 #00000040;
+  --focus-ring: 0 0 0 2px color-mix(in srgb, #7aaaff 32%, transparent);
+}
+:root[data-theme='dark'] * {
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ── 黑夜模式:组件级修复(硬编码浅色) ─────────────────────────────── */
+:root[data-theme='dark'] .topbar {
+  background: color-mix(in srgb, var(--canvas) 92%, transparent);
+  border-bottom-color: rgba(56, 65, 90, 0.72);
+}
+:root[data-theme='dark'] .row.user .body {
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+  background: color-mix(in srgb, var(--blue) 18%, var(--canvas));
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme='dark'] .assistant-avatar {
+  border-color: var(--line);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+}
+:root[data-theme='dark'] .tool-activity {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+:root[data-theme='dark'] .tool-activity.running {
+  border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+}
+:root[data-theme='dark'] .tab-affinity {
+  border-color: var(--security-border);
+  background: var(--security-soft);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+:root[data-theme='dark'] .tab-affinity-actions .keep:hover {
+  border-color: var(--line);
+  background: var(--canvas-deep);
+}
+
+/* ── 模型/推理等级移入输入框右下角(local) ─────────────────────────── */
+.composer-actions-end {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.composer-actions .composer-model {
+  margin-top: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+/* Anchor the menu to the composer footer, not to the tiny pill: the menu then
+ * spans the panel width and can never run off the left edge. */
+.composer {
+  position: relative;
+}
+.composer-actions .composer-model {
+  position: static;
+}
+.composer-actions .composer-model-menu {
+  left: 10px;
+  right: 10px;
+  bottom: calc(100% + 6px);
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.composer-actions .composer-model-trigger {
+  max-width: 168px;
+  flex: 0 0 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+.composer-actions .composer-model-trigger > span {
+  line-height: 1;
+}
+.composer-actions .composer-model-trigger > span:first-child {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-model-effort-hint {
+  flex: 0 0 auto;
+}
+/* Compact reasoning-level pills inside the menu. */
+.composer-model-effort-options {
+  gap: 3px;
+  padding: 0 4px 2px;
+}
+.composer-effort-option {
+  padding: 2px 8px;
+  line-height: 1.5;
+}
+/* ── 菜单内的推理等级行(local,对齐桌面端) ─────────────────────────── */
+.composer-model-effort {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.composer-model-effort-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 6px 2px;
+}
+.composer-effort-option {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(10.5px * var(--ui-scale));
+  font-weight: 600;
+}
+.composer-effort-option:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.composer-effort-option.isSelected {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-ink);
+}
+.composer-model-effort-hint {
+  color: var(--faint);
+  font-size: calc(10px * var(--ui-scale));
+  font-weight: 600;
+}
+/* ── 覆盖 .composer-model-menu button 的整行规则:等级胶囊应是小胶囊 ── */
+.composer-model-menu .composer-effort-option {
+  width: auto;
+  min-height: 0;
+  flex: 0 0 auto;
+  justify-content: center;
+  gap: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--muted);
+  font-size: calc(10px * var(--ui-scale));
+  font-weight: 600;
+  line-height: 1.5;
+}
+.composer-model-menu .composer-effort-option:hover,
+.composer-model-menu .composer-effort-option:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.composer-model-menu .composer-effort-option.isSelected {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue-ink);
+}
+/* ── 免疫 .composer-actions button 的蓝色圆钮外观 ─────────────────────
+   那条规则是给发送/停止按钮用的,但选择器过宽,会命中放进操作区的模型
+   胶囊与菜单行。以下规则用更高优先级把它们还原成自己的样式。 */
+.composer-actions .composer-model-trigger {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  max-width: 168px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  /* Symmetric padding instead of a fixed height: there is no box centre for
+     the font metrics to sit off, so the label is optically centred. */
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+  box-shadow: none;
+  place-items: initial;
+  color: var(--muted);
+  overflow: hidden;
+}
+.composer-actions .composer-model-trigger:hover:not(:disabled),
+.composer-actions .composer-model-trigger:focus-visible:not(:disabled),
+.composer-actions .composer-model-trigger:active:not(:disabled),
+.composer-actions .composer-model-trigger[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  /* The composer action-button skin lifts on hover; this pill must not move. */
+  transform: none;
+  box-shadow: none;
+}
+.composer-actions .composer-model-trigger svg {
+  width: 13px;
+  height: 13px;
+}
+.composer-actions .composer-model-menu button:not(.composer-effort-option) {
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 32px;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  place-items: initial;
+  color: var(--ink);
+}
+.composer-actions .composer-model-menu button:not(.composer-effort-option):hover,
+.composer-actions .composer-model-menu button:not(.composer-effort-option):focus-visible {
+  background: var(--blue-wash);
+  color: var(--blue-ink);
+}
+.composer-actions .composer-model-menu button:not(.composer-effort-option).isSelected {
+  background: var(--blue-wash);
+  color: var(--blue-ink);
+  font-weight: 680;
+}
+/* ── 操作区:不使用阴影与 hover/active 位移(local) ─────────────────── */
+.composer-actions button,
+.composer-actions button:hover:not(:disabled),
+.composer-actions button:active:not(:disabled),
+.composer-actions button:focus-visible:not(:disabled),
+.composer-actions button.stop-button,
+.composer-actions button.stop-button:hover:not(:disabled),
+.composer-actions button.stop-button:active:not(:disabled),
+.composer-actions .composer-model-trigger,
+.composer-actions .composer-model-trigger:hover:not(:disabled),
+.composer-actions .composer-model-trigger:active:not(:disabled),
+.composer-actions .composer-model-trigger[aria-expanded="true"]:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+}
+/* ── 消息时间戳与复制按钮(local) ─────────────────────────────────── */
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: calc(10px * var(--ui-scale));
+  line-height: 1.4;
+}
+.message-meta.end { justify-content: flex-end; }
+.message-time { font-variant-numeric: tabular-nums; }
+.message-copy {
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font: inherit;
+  font-size: calc(10px * var(--ui-scale));
+  line-height: 1.6;
+  opacity: 0.6;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.message-body:hover .message-copy { opacity: 1; }
+.message-copy:hover { border-color: var(--line); background: var(--canvas-deep); color: var(--ink); }
+.message-copy.copied { opacity: 1; color: var(--blue); border-color: color-mix(in srgb, var(--blue) 35%, transparent); }

@@ -29,7 +29,6 @@ import {
   uiScaleAtLimit,
 } from './ui-scale.ts'
 import { QuestionCard } from './QuestionCard.tsx'
-import { UpdateCard } from './UpdateCard.tsx'
 import { MessageImages } from './MessageImages.tsx'
 import type { QuestionAnswer } from './questions.ts'
 import {
@@ -45,6 +44,13 @@ import {
   selectionSourceLabel,
   splitSelectionMessage,
 } from './selection.ts'
+import {
+  MAX_TAB_MENTIONS,
+  splitTabMentionMessage,
+  tabMentionPromptText,
+  tabMentionSourceLabel,
+} from './tab-mentions.ts'
+import type { TabMention, TabMentionContext } from './tab-mentions.ts'
 import { approvalReadyForSession, approvalSessionToFocus } from './approvals.ts'
 import {
   browserTimeZone,
@@ -117,6 +123,8 @@ interface SessionModelOption {
   providerName: string
   id: string
   name: string
+  /** Adapter-advertised reasoning levels; undefined = the model has none. */
+  reasoning?: { defaultEffort?: string; efforts?: Array<{ id: string; name: string }> }
 }
 
 /** Advisory directory snapshot used by the composer model switcher. */
@@ -557,6 +565,71 @@ function SelectionQuote({
  * the array but reuse row objects), so markdown is re-parsed only when a
  * row's text actually changes — typing must not re-render every message.
  */
+/** Short local clock time for one message; older messages keep their day. */
+function formatMessageTime(at: number): string {
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const sameDay = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate()
+  const clock = date.toLocaleTimeString(getUiLocale() === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+  if (sameDay) return clock
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${clock}`
+}
+
+/** Copy text through the clipboard API, falling back to a hidden selection. */
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const area = document.createElement('textarea')
+      area.value = text
+      area.style.position = 'fixed'
+      area.style.top = '-1000px'
+      document.body.appendChild(area)
+      area.select()
+      const ok = document.execCommand('copy')
+      area.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+/** Footer of one message: the event time and a copy action for the visible text. */
+const MessageMeta = memo(function MessageMeta({ row, text, copy }: { row: Row; text: string; copy: PanelCopy }): React.JSX.Element | null {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1600)
+    return () => { clearTimeout(timer) }
+  }, [copied])
+  const hasText = text.trim() !== ''
+  if (row.at === undefined && !hasText) return null
+  return (
+    <div className={`message-meta${row.kind === 'user' ? ' end' : ''}`}>
+      {row.at !== undefined ? (
+        <span className="message-time" title={new Date(row.at).toLocaleString()}>{formatMessageTime(row.at)}</span>
+      ) : null}
+      {hasText ? (
+        <button
+          type="button"
+          className={`message-copy${copied ? ' copied' : ''}`}
+          aria-label={copy.app.copyMessage}
+          title={copied ? copy.app.copied : copy.app.copyMessage}
+          onClick={() => { void copyTextToClipboard(text).then((ok) => { if (ok) setCopied(true) }) }}
+        >
+          {copied ? copy.app.copied : copy.app.copyMessage}
+        </button>
+      ) : null}
+    </div>
+  )
+})
+
 const MessageBody = memo(function MessageBody({
   row,
   sessionId,
@@ -570,8 +643,10 @@ const MessageBody = memo(function MessageBody({
 }): React.JSX.Element {
   if (row.kind === 'user' || row.kind === 'assistant') {
     // A user message may carry a page quote; show the quote, not its fence.
-    const attached = row.kind === 'user' ? splitSelectionMessage(row.text) : null
-    const text = attached === null ? row.text : attached.message
+    const mentionAttached = row.kind === 'user' ? splitTabMentionMessage(row.text) : null
+    const base = mentionAttached === null ? row.text : mentionAttached.message
+    const attached = row.kind === 'user' ? splitSelectionMessage(base) : null
+    const text = attached === null ? base : attached.message
     return (
       <div className="body message-body md">
         <MessageImages
@@ -581,6 +656,16 @@ const MessageBody = memo(function MessageBody({
           align={row.kind === 'user' ? 'end' : 'start'}
           copy={copy}
         />
+        {mentionAttached !== null && (
+          <div className="tab-mentions attached" aria-label={copy.app.tabMentionAttached}>
+            {mentionAttached.mentions.map((mention) => (
+              <span className="tab-mention" key={mention.tabId} title={mention.url}>
+                <span className="tab-mention-at" aria-hidden="true">@</span>
+                {tabMentionSourceLabel(mention)}
+              </span>
+            ))}
+          </div>
+        )}
         {attached !== null && (
           <SelectionQuote
             selection={attached.selection}
@@ -589,6 +674,7 @@ const MessageBody = memo(function MessageBody({
           />
         )}
         {text.trim() !== '' && <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />}
+        <MessageMeta row={row} text={text} copy={copy} />
       </div>
     )
   }
@@ -628,9 +714,30 @@ export function App(): React.JSX.Element {
   const [state, setState] = useState<BridgeState>('stopped')
   const [caps, setCaps] = useState<BridgeCaps | null>(null)
   const [settings, setSettings] = useState<PanelSettings | null>(null)
+
+  // Apply the color theme to the panel document. `system` follows the OS and
+  // re-applies live when the OS preference changes.
+  useEffect(() => {
+    const theme = settings?.theme ?? 'system'
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = (): void => {
+      const resolved = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme
+      document.documentElement.dataset.theme = resolved
+    }
+    apply()
+    if (theme !== 'system') return
+    media.addEventListener('change', apply)
+    return () => { media.removeEventListener('change', apply) }
+  }, [settings?.theme])
   const [rows, setRows] = useState<Row[]>([])
   const [streamRow, setStreamRow] = useState<Row | null>(null)
   const [draft, setDraft] = useState<ComposerDraft<DraftImage>>(() => emptyComposerDraft())
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const [selectedTabs, setSelectedTabs] = useState<Map<string, TabMention>>(() => new Map())
+  const [mentionPicker, setMentionPicker] = useState<{ open: boolean; query: string }>({ open: false, query: '' })
+  const [mentionOptions, setMentionOptions] = useState<TabMention[]>([])
+  const [mentionStatus, setMentionStatus] = useState<{ state: 'loading' | 'ready' | 'failed'; reason: string }>({ state: 'ready', reason: '' })
+  const [mentionHighlight, setMentionHighlight] = useState(-1)
   const input = draft.text
   const draftImages = draft.images
   const [selection, setSelection] = useState<PageSelection | null>(null)
@@ -798,6 +905,7 @@ export function App(): React.JSX.Element {
         trustedActionOrigins: raw?.trustedActionOrigins ?? [],
         approvalNotifications: raw?.approvalNotifications ?? true,
         autoResumeSession: raw?.autoResumeSession ?? true,
+        theme: raw?.theme ?? 'system',
       })
     })
   }, [])
@@ -1043,7 +1151,7 @@ export function App(): React.JSX.Element {
     if (payload.sessionId !== sessionRef.current) return
     const row = rowFromEvent(payload.event)
     if (row !== null) {
-      setRows((prev) => appendLiveRow(prev, row.kind, row.text, nextSeq(), row.images))
+      setRows((prev) => appendLiveRow(prev, row.kind, row.text, nextSeq(), row.images, row.at))
       return
     }
     if (payload.event.type === 'tool/call') {
@@ -1196,7 +1304,7 @@ export function App(): React.JSX.Element {
       const result = await api.rpc<{
         current?: { provider: string; model: string; reasoningEffort?: string }
         routable?: boolean
-        groups?: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }>
+        groups?: Array<{ id: string; name: string; models: Array<{ id: string; name: string; reasoning?: SessionModelOption['reasoning'] }> }>
       }>('session.models', { sessionId })
       if (sessionRef.current !== sessionId) return
       const sessionOptions = (result.groups ?? []).flatMap((group) => group.models.map((model) => ({
@@ -1204,6 +1312,7 @@ export function App(): React.JSX.Element {
         providerName: group.name,
         id: model.id,
         name: model.name,
+        ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning }),
       })))
       const options = sessionOptions.length > 0 ? sessionOptions : (fromSettings?.options ?? [])
       setSessionModels({
@@ -1263,13 +1372,19 @@ export function App(): React.JSX.Element {
     }
   }
 
-  /** Switch the next assembled turn onto the chosen provider/model. */
-  async function selectSessionModel(option: SessionModelOption): Promise<void> {
+  /** Switch the next assembled turn onto the chosen provider/model/effort. */
+  async function selectSessionModel(option: SessionModelOption, effort?: string): Promise<void> {
     const sessionId = sessionRef.current
     if (sessionId === null || modelSelecting || busy || working) return
-    setShowModelPicker(false)
+    // Switching only the reasoning level keeps the menu open for fine-tuning.
+    const effortOnly = effort !== undefined
+      && sessionModels?.current?.provider === option.provider
+      && sessionModels.current.model === option.id
+    if (!effortOnly) setShowModelPicker(false)
+    const intendedEffort = effort ?? option.reasoning?.defaultEffort
     if (sessionModels?.current?.provider === option.provider
-      && sessionModels.current.model === option.id) return
+      && sessionModels.current.model === option.id
+      && (sessionModels.current.reasoningEffort ?? undefined) === intendedEffort) return
     setModelSelecting(true)
     setError(null)
     try {
@@ -1279,6 +1394,7 @@ export function App(): React.JSX.Element {
         sessionId,
         provider: option.provider,
         model: option.id,
+        ...(intendedEffort === undefined ? {} : { reasoningEffort: intendedEffort }),
       })
       if (sessionRef.current !== sessionId) return
       setSessionModels((current) => current === null
@@ -1424,7 +1540,25 @@ export function App(): React.JSX.Element {
         await startNewSession()
       }
     } catch (cause) {
-      setError(copy.app.deleteSessionFailed(cause instanceof Error ? cause.message : String(cause)))
+      const message = cause instanceof Error ? cause.message : String(cause)
+      // The host still owns a running/live session: hard purge is refused.
+      // Degrade to archiving through the host's own API, which always works
+      // and removes the session from the browser side panel list.
+      const archive = window.confirm(copy.app.deleteFailedArchiveConfirm(message))
+      if (!archive) {
+        setError(copy.app.deleteSessionFailed(message))
+        return
+      }
+      try {
+        await api.rpc('workspace.archiveSession', { sessionId: entry.sessionId })
+        setSessionList((prev) => prev.filter((item) => item.sessionId !== entry.sessionId))
+        if (sessionRef.current === entry.sessionId) {
+          setShowSessionPicker(false)
+          await startNewSession()
+        }
+      } catch (archiveCause) {
+        setError(copy.app.deleteSessionFailed(archiveCause instanceof Error ? archiveCause.message : String(archiveCause)))
+      }
     }
   }
 
@@ -1545,19 +1679,92 @@ export function App(): React.JSX.Element {
     }
   }
 
+  /** Open the @标签页 picker and refresh its options from the live tab list. */
+  function openMentionPicker(query: string): void {
+    setMentionPicker({ open: true, query })
+    setMentionHighlight(-1)
+    // Keep keyboard focus in the composer so ↑/↓/Enter reach the textarea.
+    composerTextareaRef.current?.focus()
+    setMentionStatus({ state: 'loading', reason: '' })
+    void api.rpc('tabs.list', {}).then((list) => {
+      if (Array.isArray(list)) {
+        setMentionOptions((list as TabMention[]).filter((item) => (
+          typeof item?.tabId === 'number' && typeof item?.title === 'string'
+        )))
+        setMentionStatus({ state: 'ready', reason: '' })
+      } else {
+        setMentionStatus({ state: 'failed', reason: 'bad payload' })
+      }
+    }).catch((error: unknown) => {
+      console.warn('[dsh-browser] tabs.list failed:', error)
+      setMentionStatus({ state: 'failed', reason: error instanceof Error ? error.message : String(error) })
+    })
+  }
+
+  /** Insert one tab as an inline @标题 token in place of the typed @query. */
+  function addMention(tab: TabMention): void {
+    const label = tab.title.trim() === '' ? tab.url : tab.title.trim()
+    setSelectedTabs((current) => {
+      const next = new Map(current)
+      next.set(label, tab)
+      return next
+    })
+    setDraft((current) => {
+      const base = current.text.replace(/(^|\s)@[^\s@]*$/u, '').trimEnd()
+      const token = `@${label}`
+      return { ...current, text: base === '' ? token : `${base} ${token}` }
+    })
+    setMentionPicker({ open: false, query: '' })
+    setMentionHighlight(-1)
+  }
+
+  /** Picker options narrowed by the typed query (shared by render and keyboard). */
+  function filteredMentionOptions(): TabMention[] {
+    const query = mentionPicker.query.toLowerCase()
+    if (query === '') return mentionOptions
+    return mentionOptions.filter((tab) => (
+      tab.title.toLowerCase().includes(query) || tab.url.toLowerCase().includes(query)
+    ))
+  }
+
+  /** Resolve inline @标题 tokens in a draft against the tabs chosen this draft. */
+  function extractInlineMentions(draftText: string, known: Map<string, TabMention>): TabMention[] {
+    const entries = [...known.entries()].sort((left, right) => right[0].length - left[0].length)
+    if (entries.length === 0) return []
+    const found: TabMention[] = []
+    const seen = new Set<number>()
+    let cursor = 0
+    while (cursor < draftText.length) {
+      const at = draftText.indexOf('@', cursor)
+      if (at === -1) break
+      let hit: TabMention | undefined
+      for (const [label, tab] of entries) {
+        if (label !== '' && draftText.startsWith(label, at + 1)) { hit = tab; break }
+      }
+      if (hit !== undefined && !seen.has(hit.tabId)) {
+        found.push(hit)
+        seen.add(hit.tabId)
+      }
+      cursor = at + 1
+    }
+    return found
+  }
+
   async function send(textOverride?: string): Promise<void> {
     const text = (textOverride ?? input).trim()
     const submittedImages = textOverride === undefined ? draftImages : []
     // A quick-start prompt asks about the whole page, not about a quote.
     const submittedSelection = textOverride === undefined ? selection : null
+    const submittedMentions = textOverride === undefined ? extractInlineMentions(text, selectedTabs) : []
     const id = sessionRef.current
     // busy state 是异步的：连续回车可能都通过 state 检查——用 ref 同步锁。
-    if ((text === '' && submittedImages.length === 0 && submittedSelection === null)
+    if ((text === '' && submittedImages.length === 0 && submittedSelection === null && submittedMentions.length === 0)
       || busy || addingImagesRef.current || sendingRef.current || sessionChangingRef.current || id === null) return
     sendingRef.current = true
     const submittedDraft: ComposerDraft<DraftImage> = { text, images: submittedImages }
     if (textOverride === undefined) {
       setDraft(emptyComposerDraft())
+      setSelectedTabs(new Map())
     }
     setBusy(true)
     setWorking(true)
@@ -1565,13 +1772,25 @@ export function App(): React.JSX.Element {
     // 不渲染乐观行：live user/message 事件即时回显，避免同一消息出现两行。
     try {
       const clientTimeZone = browserTimeZone()
+      const mentionContexts: TabMentionContext[] = []
+      for (const mention of submittedMentions.slice(0, MAX_TAB_MENTIONS)) {
+        let pageText: string | null = null
+        try {
+          const captured = await api.rpc('tab.context', { tabId: mention.tabId }) as { text?: unknown } | null
+          pageText = typeof captured?.text === 'string' ? captured.text : null
+        } catch {
+          pageText = null
+        }
+        mentionContexts.push({ mention, text: pageText })
+      }
+      const baseText = submittedSelection === null ? text : selectionPromptText(submittedSelection, text)
+      const composedText = mentionContexts.length === 0
+        ? baseText
+        : tabMentionPromptText(mentionContexts, baseText)
       await api.rpc('session.prompt', {
         sessionId: id,
         mode: 'queue',
-        content: promptContent(
-          submittedSelection === null ? text : selectionPromptText(submittedSelection, text),
-          submittedImages,
-        ),
+        content: promptContent(composedText, submittedImages),
         ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
       })
       // Deferred sessions materialize on the first prompt; refresh so chips appear.
@@ -1912,6 +2131,19 @@ export function App(): React.JSX.Element {
     ?? (sessionModels !== null && sessionModels.options.length === 0
       ? copy.app.noModelsConfigured
       : copy.app.selectModel)
+  const currentReasoning = currentModelOption?.reasoning
+  const effortChoices: Array<{ id: string | undefined; name: string }> = currentReasoning === undefined
+    ? []
+    : [
+        ...(currentReasoning.defaultEffort === undefined ? [{ id: undefined, name: copy.app.effortDefault }] : []),
+        ...(currentReasoning.efforts ?? []).map((level) => ({ id: level.id, name: level.name })),
+      ]
+  const effectiveEffort = sessionModels?.current?.reasoningEffort ?? currentReasoning?.defaultEffort
+  const effortLabel = currentReasoning === undefined
+    ? null
+    : effectiveEffort === undefined
+      ? copy.app.effortDefault
+      : (currentReasoning.efforts ?? []).find((level) => level.id === effectiveEffort)?.name ?? effectiveEffort
   const modelMenuGroups = (() => {
     const groups: Array<{ provider: string; providerName: string; models: SessionModelOption[] }> = []
     for (const option of sessionModels?.options ?? []) {
@@ -1942,7 +2174,6 @@ export function App(): React.JSX.Element {
             <h1>{copy.settings.title}</h1>
           </div>
         </div>
-        <UpdateCard copy={copy.update} />
         <div className="settings-panel">
           <label>
             <span>{copy.settings.bridgeAddress}</span>
@@ -1974,6 +2205,18 @@ export function App(): React.JSX.Element {
               <option value="auto">{copy.settings.sharingAuto}</option>
               <option value="ask">{copy.settings.sharingAsk}</option>
               <option value="off">{copy.settings.sharingOff}</option>
+            </select>
+          </label>
+          <label>
+            <span>{copy.settings.themeLabel}</span>
+            <small>{copy.settings.themeHelp}</small>
+            <select
+              value={settings?.theme ?? 'system'}
+              onChange={(e) => setSettings((prev) => prev === null ? prev : { ...prev, theme: e.target.value as PanelSettings['theme'] })}
+            >
+              <option value="system">{copy.settings.themeSystem}</option>
+              <option value="light">{copy.settings.themeLight}</option>
+              <option value="dark">{copy.settings.themeDark}</option>
             </select>
           </label>
         </div>
@@ -2220,7 +2463,7 @@ export function App(): React.JSX.Element {
                           </span>
                         </button>
                         {!entry.running && (
-                          <button className="icon-button session-delete" disabled={sessionSwitchBlocked}
+                          <button className="icon-button session-delete" disabled={sessionSwitchBlocked || entry.running}
                             aria-label={copy.app.deleteSession} title={copy.app.deleteSession}
                             onClick={() => { void deleteSession(entry) }}>
                             <TrashIcon />
@@ -2295,6 +2538,34 @@ export function App(): React.JSX.Element {
       {error !== null && <div className="error">{error}</div>}
       <footer className="composer">
         <div className="composer-box">
+          {mentionPicker.open && (
+            <div className="tab-mention-picker" role="listbox" aria-label={copy.app.tabMentionPicker}>
+              <div className="tab-mention-picker-head">{copy.app.tabMentionPicker}</div>
+              {filteredMentionOptions().map((tab, index) => (
+                <button
+                  key={tab.tabId}
+                  type="button"
+                  role="option"
+                  aria-selected={index === mentionHighlight}
+                  className={`tab-mention-option${index === mentionHighlight ? ' highlighted' : ''}`}
+                  onMouseEnter={() => setMentionHighlight(index)}
+                  onClick={() => addMention(tab)}
+                >
+                  <span className="tab-mention-option-title">{tab.title === '' ? tab.url : tab.title}</span>
+                  <span className="tab-mention-option-url">{tab.url}</span>
+                </button>
+              ))}
+              {mentionOptions.length === 0 && (
+                <div className="tab-mention-empty">
+                  {mentionStatus.state === 'loading'
+                    ? copy.app.tabMentionLoading
+                    : mentionStatus.state === 'failed'
+                      ? copy.app.tabMentionFailed(mentionStatus.reason)
+                      : copy.app.tabMentionEmpty}
+                </div>
+              )}
+            </div>
+          )}
           {selection !== null && (
             <SelectionQuote
               selection={{ ...selection, quote: selection.text }}
@@ -2326,11 +2597,45 @@ export function App(): React.JSX.Element {
             </div>
           )}
           <textarea
+            ref={composerTextareaRef}
             value={input}
             onChange={(e) => {
-              if (!sendingRef.current) setDraft((current) => ({ ...current, text: e.target.value }))
+              if (sendingRef.current) return
+              const value = e.target.value
+              setDraft((current) => ({ ...current, text: value }))
+              const match = /(^|\s)@([^\s@]*)$/u.exec(value)
+              if (match !== null) {
+                openMentionPicker(match[2])
+              } else if (mentionPicker.open) {
+                setMentionPicker((current) => ({ ...current, open: false }))
+              }
             }}
             onKeyDown={(e) => {
+              if (mentionPicker.open) {
+                const filtered = filteredMentionOptions()
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setMentionHighlight((h) => (filtered.length === 0 ? -1 : Math.min(h + 1, filtered.length - 1)))
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setMentionHighlight((h) => Math.max(h - 1, 0))
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setMentionPicker({ open: false, query: '' })
+                  return
+                }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (mentionHighlight >= 0 && mentionHighlight < filtered.length) {
+                    e.preventDefault()
+                    addMention(filtered[mentionHighlight])
+                    return
+                  }
+                }
+              }
               // isComposing：输入法组词中的回车是确认选字，不是发送。
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
@@ -2365,8 +2670,87 @@ export function App(): React.JSX.Element {
                 title={imageLimits === null ? copy.app.imageUnavailable : copy.app.addImages}
                 onClick={() => fileInputRef.current?.click()}
               ><AttachmentIcon /></button>
+              <button
+                type="button"
+                className="attachment-button"
+                disabled={!sessionReady || busy || addingImages}
+                aria-label={copy.app.tabMentionAdd}
+                title={copy.app.tabMentionAdd}
+                onClick={() => openMentionPicker('')}
+              ><span className="tab-mention-at" aria-hidden="true">@</span></button>
               <span>{copy.app.composerHelp}</span>
             </span>
+            <span className="composer-actions-end">
+              {state === 'connected' ? (
+                <div className="composer-model" ref={modelPickerRef}>
+                  <button
+                    type="button"
+                    className="composer-model-trigger"
+                    aria-expanded={showModelPicker}
+                    aria-haspopup="listbox"
+                    aria-label={copy.app.selectModel}
+                    title={effortLabel === null ? currentModelLabel : `${currentModelLabel} · ${effortLabel}`}
+                    disabled={!sessionReady || busy || addingImages || modelSelecting || working
+                      || sessionModels === null || sessionModels.options.length === 0}
+                    onClick={() => setShowModelPicker((open) => !open)}
+                  >
+                    <span>{currentModelLabel}</span>
+                    {effortLabel !== null && effortChoices.length > 0 ? (
+                      <span className="composer-model-effort-hint">{effortLabel}</span>
+                    ) : null}
+                    <ChevronDownIcon />
+                  </button>
+                  {showModelPicker && sessionModels !== null && sessionModels.options.length > 0 ? (
+                    <div className="composer-model-menu" role="listbox" aria-label={copy.app.selectModel}>
+                      {effortChoices.length > 0 && currentModelOption !== undefined ? (
+                        <div className="composer-model-effort">
+                          <div className="composer-model-group-title">{copy.app.effortLabel}</div>
+                          <div className="composer-model-effort-options" role="group" aria-label={copy.app.effortLabel}>
+                            {effortChoices.map((level) => {
+                              const selected = effectiveEffort === level.id
+                              return (
+                                <button
+                                  key={level.id ?? 'default'}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  className={`composer-effort-option${selected ? ' isSelected' : ''}`}
+                                  onClick={() => { void selectSessionModel(currentModelOption, level.id) }}
+                                >
+                                  {level.name}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                      {modelMenuGroups.map((group) => (
+                        <div key={group.provider} className="composer-model-group" role="group" aria-label={group.providerName}>
+                          {modelMenuGroups.length > 1 ? (
+                            <div className="composer-model-group-title">{group.providerName}</div>
+                          ) : null}
+                          {group.models.map((option) => {
+                            const selected = sessionModels.current?.provider === option.provider
+                              && sessionModels.current.model === option.id
+                            return (
+                              <button
+                                key={`${option.provider}:${option.id}`}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                className={selected ? 'isSelected' : undefined}
+                                title={`${option.providerName} · ${option.name}`}
+                                onClick={() => { void selectSessionModel(option) }}
+                              >
+                                <span>{option.name}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             {working ? (
               <button
                 className="stop-button"
@@ -2380,57 +2764,12 @@ export function App(): React.JSX.Element {
             ) : (
               <button onClick={() => void send()}
                 disabled={!sessionReady || busy || addingImages
-                  || (input.trim() === '' && draftImages.length === 0 && selection === null)}
+                  || (input.trim() === '' && draftImages.length === 0 && selection === null && extractInlineMentions(input, selectedTabs).length === 0)}
                 aria-label={copy.app.sendMessage}><SendIcon /></button>
             )}
+            </span>
           </div>
         </div>
-        {state === 'connected' ? (
-          <div className="composer-model" ref={modelPickerRef}>
-            <button
-              type="button"
-              className="composer-model-trigger"
-              aria-expanded={showModelPicker}
-              aria-haspopup="listbox"
-              aria-label={copy.app.selectModel}
-              title={currentModelLabel}
-              disabled={!sessionReady || busy || addingImages || modelSelecting || working
-                || sessionModels === null || sessionModels.options.length === 0}
-              onClick={() => setShowModelPicker((open) => !open)}
-            >
-              <span>{currentModelLabel}</span>
-              <ChevronDownIcon />
-            </button>
-            {showModelPicker && sessionModels !== null && sessionModels.options.length > 0 ? (
-              <div className="composer-model-menu" role="listbox" aria-label={copy.app.selectModel}>
-                {modelMenuGroups.map((group) => (
-                  <div key={group.provider} className="composer-model-group" role="group" aria-label={group.providerName}>
-                    {modelMenuGroups.length > 1 ? (
-                      <div className="composer-model-group-title">{group.providerName}</div>
-                    ) : null}
-                    {group.models.map((option) => {
-                      const selected = sessionModels.current?.provider === option.provider
-                        && sessionModels.current.model === option.id
-                      return (
-                        <button
-                          key={`${option.provider}:${option.id}`}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          className={selected ? 'isSelected' : undefined}
-                          title={`${option.providerName} · ${option.name}`}
-                          onClick={() => { void selectSessionModel(option) }}
-                        >
-                          <span>{option.name}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </footer>
     </div>{approvalDialog}</>
   )

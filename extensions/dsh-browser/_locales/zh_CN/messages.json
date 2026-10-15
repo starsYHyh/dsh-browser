@@ -7,5 +7,9 @@
   },
   "actionTitle": {
     "message": "打开 dsh 浏览器助手"
+  },
+  "askSelection": {
+    "message": "向 DeepSeek 提问：“%s”",
+    "description": "Context-menu entry that sends the selected text to the side panel"
   }
 }

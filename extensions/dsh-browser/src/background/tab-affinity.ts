@@ -54,6 +54,18 @@ function sameTab(left: AffinityTab | null, right: AffinityTab | null): boolean {
     && left?.url === right?.url
 }
 
+/**
+ * LOCAL CUSTOMIZATION (dsh-browser desktop integration, omdsh-dev):
+ * When true, a manual tab switch silently hands the newly active tab to the
+ * assistant — every mapped session follows the visible page, the handoff
+ * prompt never appears, and the fail-closed "lost" state self-heals on the
+ * next tab activation. Unmapped sessions (e.g. a session created in the
+ * desktop app rather than the side panel) follow the global controlled tab
+ * instead of failing with content-unavailable.
+ * Set to false to restore the upstream ask-first behavior.
+ */
+const AUTO_FOLLOW_ON_TAB_SWITCH = true
+
 /** Owns the controlled-tab lifecycle for one extension/bridge connection. */
 export class TabAffinityController {
   private controlled: AffinityTab | null = null
@@ -157,6 +169,15 @@ export class TabAffinityController {
       this.keptActiveTabId = null
     } else if (previousActive?.tabId !== tab.tabId) {
       this.keptActiveTabId = null
+    }
+    // AUTO_FOLLOW customization: silently follow the user's visible tab.
+    if (AUTO_FOLLOW_ON_TAB_SWITCH && (this.controlled === null || this.controlled.tabId !== tab.tabId)) {
+      this.controlled = { ...tab }
+      this.keptActiveTabId = null
+      this.pinned = false
+      this.hasBound = true
+      this.lost = false
+      for (const [sid] of this.sessionTabs) this.sessionTabs.set(sid, { ...tab })
     }
     return this.bumpIfChanged(previousActive, previousControlled, previousKept)
   }
@@ -389,7 +410,11 @@ export class TabAffinityController {
   resolveTarget(sessionId?: string): TabTargetResolution {
     if (sessionId !== undefined) {
       const tab = this.sessionTabs.get(sessionId)
-      return tab === undefined ? { kind: 'lost' } : { kind: 'target', tab: { ...tab } }
+      if (tab !== undefined) return { kind: 'target', tab: { ...tab } }
+      // AUTO_FOLLOW customization: a session that never bound its own tab
+      // (e.g. created in the desktop app) falls through to the global
+      // affinity, so it follows the user's visible tab instead of failing.
+      if (!AUTO_FOLLOW_ON_TAB_SWITCH) return { kind: 'lost' }
     }
     switch (this.status()) {
       case 'unbound': return { kind: 'initial' }

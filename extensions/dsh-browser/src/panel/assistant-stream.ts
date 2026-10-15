@@ -25,6 +25,8 @@ interface Attempt {
   nextIndex: number
   blocks: Map<number, PartialBlock>
   settlement?: { seq: number; type: string }
+  /** Wall-clock start of the streaming attempt, used as the transient row's time. */
+  startedAt: number
 }
 
 export type StreamUpdate = 'changed' | 'ignored' | 'rebaseline'
@@ -126,6 +128,7 @@ export class AssistantStreamView {
       kind: 'assistant',
       text,
       ...(images.length === 0 ? {} : { images }),
+      at: attempt.startedAt,
     }
   }
 
@@ -144,7 +147,8 @@ function validStart(value: Record<string, unknown>): value is Record<string, unk
 }
 
 function newAttempt(value: { attemptId: string; turn: number; step: number; startedAfterSeq: number }): Attempt {
-  return { id: value.attemptId, turn: value.turn, step: value.step, startedAfterSeq: value.startedAfterSeq, nextIndex: 0, blocks: new Map() }
+  const startedAt = Date.now()
+  return { id: value.attemptId, turn: value.turn, step: value.step, startedAfterSeq: value.startedAfterSeq, nextIndex: 0, blocks: new Map(), startedAt }
 }
 
 function pushChunk(attempt: Attempt, chunk: Record<string, unknown>): void {

@@ -7,5 +7,9 @@
   },
   "actionTitle": {
     "message": "Open dsh Browser Assistant"
+  },
+  "askSelection": {
+    "message": "Ask DeepSeek about \"%s\"",
+    "description": "Context-menu entry that sends the selected text to the side panel"
   }
 }

@@ -94,6 +94,8 @@ export interface Settings {
   approvalNotifications: boolean
   /** Restore the current tab and page path's conversation when the panel reopens. */
   autoResumeSession: boolean
+  /** Side panel color theme: follow the OS, or force light/dark. */
+  theme: 'system' | 'light' | 'dark'
 }
 
 const SETTINGS_DEFAULTS: Settings = {
@@ -105,6 +107,7 @@ const SETTINGS_DEFAULTS: Settings = {
   trustedActionOrigins: [],
   approvalNotifications: true,
   autoResumeSession: true,
+  theme: 'system',
 }
 
 /**
@@ -558,6 +561,68 @@ function summarizeTab(tab: chrome.tabs.Tab): AffinityTab | null {
   }
 }
 
+/** Snapshot every controllable (http/https) tab, keyed by tab id. */
+async function liveTabIndex(): Promise<Map<number, AffinityTab>> {
+  const index = new Map<number, AffinityTab>()
+  try {
+    for (const tab of await chrome.tabs.query({})) {
+      const summary = summarizeTab(tab)
+      if (summary === null || !/^https?:/i.test(summary.url)) continue
+      index.set(summary.tabId, summary)
+    }
+  } catch {
+    // No tabs access: callers fall back to the active-tab query.
+  }
+  return index
+}
+
+/**
+ * Resolve a stored tab reference against the live browser: by id first, then by
+ * exact URL.
+ *
+ * LOCAL CUSTOMIZATION (dsh-browser desktop integration, omdsh-dev): Chrome
+ * reassigns tab ids across browser restarts and an extension reload outlives
+ * them, so a stored id that no longer resolves is stale metadata — not evidence
+ * that the user closed the tab. Matching on the URL restores the page the
+ * session was working on instead of reporting a closed tab.
+ */
+function resolveStoredTab(
+  stored: { tabId: number; url?: string | undefined },
+  index: Map<number, AffinityTab>,
+): AffinityTab | null {
+  const byId = index.get(stored.tabId)
+  if (byId !== undefined) return byId
+  const url = stored.url ?? ''
+  if (url === '') return null
+  for (const tab of index.values()) {
+    if (tab.url === url) return tab
+  }
+  return null
+}
+
+/**
+ * Bind a session whose stored tab is gone to the page the user is looking at.
+ * Returns false only when no controllable tab exists at all.
+ */
+async function rebindSessionToVisibleTab(sessionId: string): Promise<boolean> {
+  if (tabAffinity.getSessionTab(sessionId) !== undefined) return true
+  let target: AffinityTab | undefined
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    const summary = activeTab === undefined ? null : summarizeTab(activeTab)
+    if (summary !== null && /^https?:/i.test(summary.url)) target = summary
+  } catch {
+    // Fall through to any controllable tab.
+  }
+  if (target === undefined) target = [...(await liveTabIndex()).values()][0]
+  if (target === undefined) return false
+  tabAffinity.bindInitial(target, sessionId)
+  tabAffinity.observeActive(target)
+  persistTabAffinity()
+  broadcastTabAffinity()
+  return tabAffinity.getSessionTab(sessionId) !== undefined
+}
+
 function storedAffinity(): StoredTabAffinity | null {
   const state = tabAffinity.snapshot()
   const sessionTabs = tabAffinity.sessionMap()
@@ -670,36 +735,37 @@ async function restoreTabAffinity(): Promise<void> {
   }
 
   if (record?.sessionTabs !== undefined) {
+    const index = await liveTabIndex()
     const restoredSessions: Record<string, AffinityTab> = {}
     for (const [sid, storedTab] of Object.entries(record.sessionTabs)) {
       if (typeof storedTab?.tabId !== 'number' || !Number.isInteger(storedTab.tabId) || storedTab.tabId < 0) continue
-      try {
-        const live = summarizeTab(await chrome.tabs.get(storedTab.tabId))
-        if (live !== null) restoredSessions[sid] = live
-      } catch {
-        // Closed tabs are deliberately pruned so the session fails closed.
-      }
+      const live = resolveStoredTab(storedTab, index)
+      if (live !== null) restoredSessions[sid] = live
     }
     tabAffinity.restoreSessionTabs(restoredSessions)
   }
   tabAffinity.restoreFocusedSession(record?.focusedSessionId ?? null)
 
   if (record !== null && 'controlledTabId' in record) {
-    try {
-      const controlled = summarizeTab(await chrome.tabs.get(record.controlledTabId))
-      if (controlled === null) tabAffinity.restoreLost()
-      else tabAffinity.restoreControlled(controlled)
-    } catch {
-      tabAffinity.restoreLost()
-    }
-  } else if (record?.lost === true) {
-    tabAffinity.restoreLost()
+    const controlled = resolveStoredTab({ tabId: record.controlledTabId }, await liveTabIndex())
+    if (controlled !== null) tabAffinity.restoreControlled(controlled)
   }
+  // `lost` is deliberately not restored: a browser restart invalidates every
+  // stored tab id, and the fail-closed banner must not greet the user for a tab
+  // they never closed. The next activation (or the prompt gate below) rebinds
+  // the visible page.
 
   // Restore the pin before syncing the active tab: otherwise the sync would
   // surface a handoff prompt for a switch the user already said not to ask about.
   if (record !== null && 'pinned' in record && record.pinned === true) tabAffinity.restorePinned()
   await syncActiveTab()
+  if (tabAffinity.snapshot().controlled === null && record?.sessionTabs !== undefined) {
+    const index = await liveTabIndex()
+    const remembered = Object.values(record.sessionTabs)
+      .map((stored) => resolveStoredTab(stored, index))
+      .find((tab) => tab !== null)
+    if (remembered !== undefined && remembered !== null) tabAffinity.observeActive(remembered)
+  }
   if (record !== null && 'keptActiveTabId' in record) {
     const state = tabAffinity.snapshot()
     if (state.status === 'handoff' && state.active?.tabId === record.keptActiveTabId) {
@@ -1286,6 +1352,47 @@ async function startBridge(): Promise<void> {
 }
 
 /** Gateway RPC with a helpful error when the bridge is down. */
+/** Panel-local RPCs: list tabs and capture one referenced tab's context without the host gateway. */
+function localTabRpc(method: string, payload: unknown): Promise<unknown> | null {
+  if (method === 'tabs.list') {
+    return chrome.tabs.query({}).then((tabs) => tabs
+      .filter((tab) => typeof tab.id === 'number')
+      .map((tab) => ({ tabId: tab.id, title: tab.title ?? '', url: tab.url ?? '' })))
+  }
+  if (method === 'tab.context') {
+    const record = (payload ?? {}) as { tabId?: unknown }
+    const tabId = typeof record.tabId === 'number' ? record.tabId : -1
+    if (tabId < 0) return Promise.reject(new Error('tab.context requires a numeric tabId'))
+    return chrome.tabs.get(tabId).then(async (tab) => {
+      const context: { tabId: number; title: string; url: string; text: string | null } = {
+        tabId,
+        title: tab.title ?? '',
+        url: tab.url ?? '',
+        text: null,
+      }
+      const share = unrestrictedAccessEnabled() || settings.sharePageContent !== 'off'
+      if (!share || tab.url === undefined || !/^https?:/iu.test(tab.url)) return context
+      try {
+        const answer = await chrome.tabs.sendMessage(tabId, {
+          type: 'DSH_ACTION',
+          action: 'browser_snapshot',
+          args: {},
+          budget: { maxChars: 12000, maxItems: 0 },
+        }, { frameId: 0 }) as unknown
+        if (typeof answer === 'object' && answer !== null
+          && (answer as { ok?: unknown }).ok === true
+          && typeof (answer as { result?: { text?: unknown } }).result?.text === 'string') {
+          context.text = (answer as { result: { text: string } }).result.text
+        }
+      } catch {
+        context.text = null
+      }
+      return context
+    })
+  }
+  return null
+}
+
 async function gatewayRpc(method: string, payload: unknown): Promise<unknown> {
   if (rpc === null || bridge === null || !bridge.connected) {
     throw new Error(getUiLocale() === 'zh'
@@ -1319,6 +1426,48 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 
 // ---- Panel ports ----
 
+/** Context-menu entry id: send the current text selection to the side panel. */
+const ASK_SELECTION_MENU_ID = 'dsh-ask-selection'
+/** Selections are capped to the same length the content script reports. */
+const ASK_SELECTION_MAX_CHARS = 4_000
+
+/** (Re)install the selection context menu; safe to call on every worker start. */
+function installSelectionContextMenu(): void {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: ASK_SELECTION_MENU_ID,
+      title: chrome.i18n.getMessage('askSelection') || 'Ask DeepSeek about "%s"',
+      contexts: ['selection'],
+    })
+  })
+}
+
+chrome.runtime.onInstalled.addListener(installSelectionContextMenu)
+chrome.runtime.onStartup.addListener(installSelectionContextMenu)
+installSelectionContextMenu()
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== ASK_SELECTION_MENU_ID) return
+  const text = typeof info.selectionText === 'string' ? info.selectionText : ''
+  if (text.trim() === '') return
+  const windowId = typeof tab?.windowId === 'number' ? tab.windowId : undefined
+  if (windowId === undefined) return
+  // The click is the user's gesture: open the panel first, then publish the
+  // capture. A panel that is still loading receives the current selection when
+  // it connects, so this order has no race.
+  void chrome.sidePanel.open({ windowId }).catch(() => {})
+  const truncated = text.length > ASK_SELECTION_MAX_CHARS
+  const capture = {
+    text: truncated ? text.slice(0, ASK_SELECTION_MAX_CHARS) : text,
+    truncated,
+    title: typeof tab?.title === 'string' ? tab.title : '',
+    url: typeof info.pageUrl === 'string' ? info.pageUrl : (typeof tab?.url === 'string' ? tab.url : ''),
+  }
+  if (selections.capture({ windowId, tabId: typeof tab?.id === 'number' ? tab.id : -1, frameId: 0 }, capture)) {
+    broadcastSelection(windowId)
+  }
+})
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'dsh-panel') return
   const wasIdle = panelPorts.size === 0
@@ -1344,6 +1493,23 @@ chrome.runtime.onConnect.addListener((port) => {
     switch (msg.type) {
       case 'rpc': {
         const rpcMsg = message as { id: string; method: string; payload?: unknown }
+        const local = localTabRpc(rpcMsg.method, rpcMsg.payload)
+        if (local !== null) {
+          void local.then(
+            (result) => { try { port.postMessage({ type: 'rpc.result', id: rpcMsg.id, ok: true, result: { result: { ok: true, value: result } } }) } catch { /* port closed */ } },
+            (error: unknown) => {
+              try {
+                port.postMessage({
+                  type: 'rpc.result',
+                  id: rpcMsg.id,
+                  ok: false,
+                  error: { code: 'tab-rpc-failed', message: error instanceof Error ? error.message : String(error) },
+                })
+              } catch { /* port closed */ }
+            },
+          )
+          break
+        }
         const rpcSessionId = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
           ? (rpcMsg.payload as { sessionId?: string }).sessionId
           : undefined
@@ -1353,7 +1519,11 @@ chrome.runtime.onConnect.addListener((port) => {
         const prepare = rpcMsg.method === 'session.prompt'
           ? Promise.resolve().then(async () => {
               await refresh
-              return rpcSessionId === undefined || tabAffinity.getSessionTab(rpcSessionId) !== undefined
+              if (rpcSessionId === undefined) return true
+              if (tabAffinity.getSessionTab(rpcSessionId) !== undefined) return true
+              // LOCAL CUSTOMIZATION: rebind the visible page instead of blocking
+              // the prompt on a binding a browser/extension restart invalidated.
+              return await rebindSessionToVisibleTab(rpcSessionId)
             })
           : Promise.resolve(true)
         void prepare.then((ready) => {

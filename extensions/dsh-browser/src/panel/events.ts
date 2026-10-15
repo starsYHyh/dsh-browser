@@ -18,12 +18,16 @@ export interface Row {
   text: string
   images?: ImageAttachmentRef[]
   status?: 'running' | 'complete'
+  /** Event time in epoch milliseconds, when the source event carried one. */
+  at?: number
 }
 
 /** Minimal view of a SessionEvent (payload in `data`). */
 export interface SessionEventView {
   type: string
   seq?: number
+  /** Session event time (epoch milliseconds). */
+  time?: number
   surfaceOp?: unknown
   data?: {
     content?: unknown
@@ -153,7 +157,7 @@ export function rowFromEvent(event: SessionEventView): Row | null {
       const images = imageRefsFromBlocks(blocks)
       return text.trim() === '' && images.length === 0
         ? null
-        : { seq: 0, kind: 'user', text, ...(images.length === 0 ? {} : { images }) }
+        : { seq: 0, kind: 'user', text, ...(images.length === 0 ? {} : { images }), ...(event.time === undefined ? {} : { at: event.time }) }
     }
     case 'assistant/message': {
       // 工具调用也会产生 assistant/message，但其 content 可能只有 tool_use
@@ -163,7 +167,7 @@ export function rowFromEvent(event: SessionEventView): Row | null {
       const images = imageRefsFromBlocks(blocks)
       return text.trim() === '' && images.length === 0
         ? null
-        : { seq: 0, kind: 'assistant', text, ...(images.length === 0 ? {} : { images }) }
+        : { seq: 0, kind: 'assistant', text, ...(images.length === 0 ? {} : { images }), ...(event.time === undefined ? {} : { at: event.time }) }
     }
     default:
       return null
@@ -191,15 +195,16 @@ export function appendLiveRow(
   text: string,
   seq: number,
   images?: ImageAttachmentRef[],
+  at?: number,
 ): Row[] {
   if (kind === 'tool') {
     const last = rows[rows.length - 1]
     if (last?.kind === 'tool') {
       return [...rows.slice(0, -1), { seq, kind: 'tool', text: `${last.text} → ${text}`, status: 'running' }]
     }
-    return [...rows, { seq, kind, text, status: 'running' }]
+    return [...rows, { seq, kind, text, status: 'running', ...(at === undefined ? {} : { at }) }]
   }
-  return [...rows, { seq, kind, text, ...(images === undefined || images.length === 0 ? {} : { images }) }]
+  return [...rows, { seq, kind, text, ...(images === undefined || images.length === 0 ? {} : { images }), ...(at === undefined ? {} : { at }) }]
 }
 
 /** 标记最后一行工具调用已完成（并入，不新增行）。 */
@@ -218,20 +223,28 @@ export function mergeHistoryRows(
   locale: UiLocale = getUiLocale(),
 ): Row[] {
   const rows: Row[] = []
-  let pendingTool: { items: string[]; total: number } | null = null
+  let pendingTool: { items: string[]; total: number; at?: number } | null = null
   const flushTool = (): void => {
     if (pendingTool === null) return
     const shown = pendingTool.items.slice(0, 3)
     const label = pendingTool.total > shown.length
       ? PANEL_COPY[locale].tool.overflow(shown, pendingTool.total)
       : shown.join(' → ')
-    rows.push({ seq: nextSeq(), kind: 'tool', text: label, status: 'complete' })
+    rows.push({
+      seq: nextSeq(),
+      kind: 'tool',
+      text: label,
+      status: 'complete',
+      ...(pendingTool.at === undefined ? {} : { at: pendingTool.at }),
+    })
     pendingTool = null
   }
   for (const ev of events) {
     if (ev.type === 'tool/call') {
       const summary = toolSummary(ev.data?.name ?? 'tool', ev.data?.arguments, locale)
-      if (pendingTool === null) pendingTool = { items: [summary], total: 1 }
+      if (pendingTool === null) {
+        pendingTool = { items: [summary], total: 1, ...(ev.time === undefined ? {} : { at: ev.time }) }
+      }
       else {
         pendingTool.items.push(summary)
         pendingTool.total += 1

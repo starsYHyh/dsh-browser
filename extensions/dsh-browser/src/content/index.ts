@@ -22,7 +22,12 @@ let budget: SnapshotBudget = { maxItems: 60, maxForms: 30, maxChars: DEFAULT_SNA
 const ids = new ElementIds()
 
 const selectionWatcher = new SelectionWatcher((selection) => {
-  void chrome.runtime.sendMessage({ type: 'DSH_SELECTION', selection }).catch(() => {})
+  // An extension reload invalidates previously injected contexts; stay quiet
+  // instead of throwing inside the page's own event loop.
+  try {
+    if (chrome.runtime?.id === undefined) return
+    void chrome.runtime.sendMessage({ type: 'DSH_SELECTION', selection }).catch(() => {})
+  } catch { /* orphaned content script after an extension reload */ }
 })
 
 const CONTENT_SCRIPT_LISTENER = '__dshBrowserContentScriptListener__'
@@ -102,19 +107,28 @@ if (previousListener !== undefined) {
 contentGlobal[CONTENT_SELECTION_WATCHER]?.dispose()
 contentGlobal[CONTENT_SCRIPT_LISTENER] = onMessage
 contentGlobal[CONTENT_SELECTION_WATCHER] = selectionWatcher
-chrome.runtime.onMessage.addListener(onMessage)
+// An extension reload invalidates previously injected contexts. A content
+// script that executes after invalidation must stay quiet instead of throwing
+// "Extension context invalidated" into the page console; the next page load
+// injects a fresh copy with a live context.
+try {
+  if (chrome.runtime?.id === undefined) throw new Error('extension context invalidated')
+  chrome.runtime.onMessage.addListener(onMessage)
 
-// A navigation action answers before unloading. The replacement content
-// script announces when the new document can accept its automatic snapshot,
-// and learns from the reply whether a side panel wants selection reports.
-void chrome.runtime.sendMessage({ type: 'DSH_CONTENT_READY' }).then((response: unknown) => {
-  if (typeof response !== 'object' || response === null) return
-  const ready = response as {
-    selectionWatch?: unknown
-    selectionWatchEpoch?: unknown
-    selectionWatchRevision?: unknown
-  }
-  const epoch = typeof ready.selectionWatchEpoch === 'string' ? ready.selectionWatchEpoch : undefined
-  const revision = typeof ready.selectionWatchRevision === 'number' ? ready.selectionWatchRevision : undefined
-  selectionWatcher.setEnabled(ready.selectionWatch === true, revision, epoch)
-}).catch(() => {})
+  // A navigation action answers before unloading. The replacement content
+  // script announces when the new document can accept its automatic snapshot,
+  // and learns from the reply whether a side panel wants selection reports.
+  void chrome.runtime.sendMessage({ type: 'DSH_CONTENT_READY' }).then((response: unknown) => {
+    if (typeof response !== 'object' || response === null) return
+    const ready = response as {
+      selectionWatch?: unknown
+      selectionWatchEpoch?: unknown
+      selectionWatchRevision?: unknown
+    }
+    const epoch = typeof ready.selectionWatchEpoch === 'string' ? ready.selectionWatchEpoch : undefined
+    const revision = typeof ready.selectionWatchRevision === 'number' ? ready.selectionWatchRevision : undefined
+    selectionWatcher.setEnabled(ready.selectionWatch === true, revision, epoch)
+  }).catch(() => {})
+} catch {
+  // Orphaned after an extension reload: inert until the page reloads.
+}

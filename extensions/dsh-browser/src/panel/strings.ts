@@ -78,6 +78,11 @@ export interface PanelCopy {
     approvalNotificationsHelp: string
     autoResumeSession: string
     autoResumeSessionHelp: string
+    themeLabel: string
+    themeHelp: string
+    themeSystem: string
+    themeLight: string
+    themeDark: string
     trustedOrigins: string
     trustedOriginsHelp: string
     trustedOriginInput: string
@@ -122,33 +127,6 @@ export interface PanelCopy {
     relayEmpty: string
     relayInvalidName: string
   }
-  update: {
-    eyebrow: string
-    title: string
-    idleTitle: string
-    idleBody: string
-    checking: string
-    checkingBody: string
-    currentTitle: string
-    currentBody: (latestVersion: string) => string
-    availableTitle: (latestVersion: string) => string
-    availableLoadingBody: string
-    availableManagedBody: string
-    availableCheckoutBody: string
-    availableUnknownBody: string
-    reloadReminder: string
-    loadingInstall: string
-    managedInstall: string
-    checkoutInstall: string
-    unknownInstall: string
-    errorTitle: string
-    errorBody: string
-    check: string
-    copyManagedCommand: string
-    copyCheckoutCommand: string
-    copied: string
-    copyError: string
-  }
   textSize: {
     open: string
     title: string
@@ -168,6 +146,7 @@ export interface PanelCopy {
     deleteSession: string
     deleteSessionConfirm: (title: string) => string
     deleteSessionFailed: (reason: string) => string
+    deleteFailedArchiveConfirm: (reason: string) => string
     deletePurgeFailed: (reason: string) => string
     emptyTitle: string
     emptyDescription: string
@@ -209,7 +188,19 @@ export interface PanelCopy {
     selectionAttached: string
     selectionTruncated: string
     removeSelection: string
+    tabMentionAdd: string
+    tabMentionPicker: string
+    tabMentionEmpty: string
+    tabMentionLoading: string
+    tabMentionFailed: (reason: string) => string
+    tabMentionChip: string
+    tabMentionAttached: string
+    removeTabMention: (title: string) => string
+    effortLabel: string
+    effortDefault: string
     scrollToBottom: string
+    copyMessage: string
+    copied: string
   }
 }
 
@@ -311,6 +302,11 @@ const EN: PanelCopy = {
     approvalNotificationsHelp: 'Notify you when an approval arrives while the side panel is closed',
     autoResumeSession: "Resume this page's conversation",
     autoResumeSessionHelp: 'Reopen the conversation associated with this tab and page path; other pages start a new conversation',
+    themeLabel: 'Theme',
+    themeHelp: 'Side panel color theme: follow the system, light, or dark.',
+    themeSystem: 'Follow system',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     trustedOrigins: 'Always-allowed domains',
     trustedOriginsHelp: 'The approval dialog can trust a domain for the current side-panel session only. Domains added here permanently skip action confirmation when every known origin is trusted. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
     trustedOriginInput: 'Domain to always trust (e.g. https://example.com or https://*.example.com)',
@@ -355,33 +351,6 @@ const EN: PanelCopy = {
     relayEmpty: 'No relay profiles yet.',
     relayInvalidName: 'Enter a profile name.',
   },
-  update: {
-    eyebrow: 'Release channel',
-    title: 'Updates',
-    idleTitle: 'Ready to check',
-    idleBody: 'Compare this build with the version on GitHub main.',
-    checking: 'Checking…',
-    checkingBody: 'Reading the latest extension manifest from GitHub.',
-    currentTitle: 'No update found',
-    currentBody: (latestVersion) => `Repository version: v${latestVersion}.`,
-    availableTitle: (latestVersion) => `Version ${latestVersion} is available`,
-    availableLoadingBody: 'Confirming how this extension was installed before offering an update command.',
-    availableManagedBody: 'Copy the managed update command and run it in Terminal.',
-    availableCheckoutBody: 'Pull or switch to the revision you want in the original checkout, then rerun its installer.',
-    availableUnknownBody: 'This copy predates install-source metadata. Use the same update flow you originally installed with; no command will be copied.',
-    reloadReminder: 'After updating, open chrome://extensions, find “dsh Browser Assistant,” click the rotating-arrow Reload button on its card, then restart dsh.',
-    loadingInstall: 'Identifying install…',
-    managedInstall: 'Managed install',
-    checkoutInstall: 'Local checkout',
-    unknownInstall: 'Install source unknown',
-    errorTitle: 'Could not check for updates',
-    errorBody: 'Check your network connection and try again.',
-    check: 'Check for updates',
-    copyManagedCommand: 'Copy update command',
-    copyCheckoutCommand: 'Copy checkout command',
-    copied: 'Command copied',
-    copyError: 'Could not copy the command. Run the installer from the original installation source instead.',
-  },
   textSize: {
     open: 'Text size',
     title: 'Text size',
@@ -401,6 +370,7 @@ const EN: PanelCopy = {
     deleteSession: 'Delete session',
     deleteSessionConfirm: (title) => `Delete “${title}”? Its conversation history will be removed permanently.`,
     deleteSessionFailed: (reason) => `Delete failed: ${reason}`,
+    deleteFailedArchiveConfirm: (reason) => `Delete failed: ${reason} The session is still running or locked, so it cannot be fully deleted right now. Archive it instead (recoverable in dsh)?`,
     deletePurgeFailed: (reason) => `Removed from the list, but file cleanup failed (it may reappear after dsh restarts): ${reason}`,
     emptyTitle: 'Hand me the current page',
     emptyDescription: 'I can read the page, find information, and click, fill, or navigate for you.',
@@ -442,7 +412,19 @@ const EN: PanelCopy = {
     selectionAttached: 'Selected text',
     selectionTruncated: '(truncated)',
     removeSelection: 'Remove the selected text',
+    tabMentionAdd: 'Reference a tab (@)',
+    tabMentionPicker: 'Reference a tab as context',
+    tabMentionEmpty: 'No tabs to reference',
+    tabMentionLoading: 'Loading tabs…',
+    tabMentionFailed: (reason) => `Could not list tabs: ${reason}`,
+    tabMentionChip: 'Referenced tabs',
+    tabMentionAttached: 'Referenced tabs',
+    removeTabMention: (title) => `Remove ${title}`,
+    effortLabel: 'Reasoning level',
+    effortDefault: 'Default',
     scrollToBottom: 'Scroll to latest',
+    copyMessage: 'Copy',
+    copied: 'Copied',
   },
 }
 
@@ -544,6 +526,11 @@ const ZH: PanelCopy = {
     approvalNotificationsHelp: '侧栏关闭时收到审批请求，通过系统通知提醒你',
     autoResumeSession: '续接当前页面会话',
     autoResumeSessionHelp: '重新打开当前标签页此页面的会话；其他页面会新建会话',
+    themeLabel: '主题',
+    themeHelp: '侧边栏颜色主题：跟随系统、白天或黑夜。',
+    themeSystem: '跟随系统',
+    themeLight: '白天',
+    themeDark: '黑夜',
     trustedOrigins: '永久免确认域名',
     trustedOriginsHelp: '审批框可只信任本次侧栏会话。这里添加的域名仅在所有已知来源均受信任时免除操作确认。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
     trustedOriginInput: '要永久信任的域名（如 https://example.com 或 https://*.example.com）',
@@ -588,33 +575,6 @@ const ZH: PanelCopy = {
     relayEmpty: '还没有中转档案。',
     relayInvalidName: '请填写档案名称。',
   },
-  update: {
-    eyebrow: '发布通道',
-    title: '软件更新',
-    idleTitle: '可以检查新版本',
-    idleBody: '与 GitHub main 上的扩展版本进行比较。',
-    checking: '正在检查…',
-    checkingBody: '正在读取 GitHub 上的最新扩展清单。',
-    currentTitle: '未发现更新',
-    currentBody: (latestVersion) => `仓库版本：v${latestVersion}。`,
-    availableTitle: (latestVersion) => `发现新版本 ${latestVersion}`,
-    availableLoadingBody: '正在确认此扩展的安装来源，然后再提供更新命令。',
-    availableManagedBody: '复制托管更新命令并在终端运行。',
-    availableCheckoutBody: '请先在原 checkout 中 pull 或切换到目标 revision，再重新运行其中的安装脚本。',
-    availableUnknownBody: '这个副本没有安装来源记录。请沿用最初的更新方式；这里不会复制可能覆盖来源的命令。',
-    reloadReminder: '更新完成后，打开 chrome://extensions，找到“dsh 浏览器助手”，点击卡片上的“重新加载”旋转箭头，然后重启 dsh。',
-    loadingInstall: '正在识别安装来源…',
-    managedInstall: '托管安装',
-    checkoutInstall: '本地 checkout',
-    unknownInstall: '安装来源未知',
-    errorTitle: '暂时无法检查更新',
-    errorBody: '请检查网络连接，然后重试。',
-    check: '检查更新',
-    copyManagedCommand: '复制更新命令',
-    copyCheckoutCommand: '复制 checkout 命令',
-    copied: '命令已复制',
-    copyError: '无法复制命令，请回到原安装来源重新运行安装脚本。',
-  },
   textSize: {
     open: '字号',
     title: '字号',
@@ -634,6 +594,7 @@ const ZH: PanelCopy = {
     deleteSession: '删除会话',
     deleteSessionConfirm: (title) => `确定删除「${title}」吗？对话历史将被永久移除。`,
     deleteSessionFailed: (reason) => `删除失败：${reason}`,
+    deleteFailedArchiveConfirm: (reason) => `删除失败：${reason}会话仍在运行或被占用，无法彻底删除。是否改为归档（可在 dsh 中恢复）？`,
     deletePurgeFailed: (reason) => `已从列表移除，但文件清理失败（dsh 重启后可能再次出现）：${reason}`,
     emptyTitle: '把当前页面交给我',
     emptyDescription: '我可以阅读页面、查找信息，也可以替你点击、填写和导航。',
@@ -675,7 +636,19 @@ const ZH: PanelCopy = {
     selectionAttached: '选中的网页内容',
     selectionTruncated: '（已截断）',
     removeSelection: '移除选中内容',
+    tabMentionAdd: '引用标签页（@）',
+    tabMentionPicker: '引用标签页作为上下文',
+    tabMentionEmpty: '没有可引用的标签页',
+    tabMentionLoading: '正在加载标签页…',
+    tabMentionFailed: (reason) => `无法获取标签页列表：${reason}`,
+    tabMentionChip: '已引用的标签页',
+    tabMentionAttached: '引用的标签页',
+    removeTabMention: (title) => `移除 ${title}`,
+    effortLabel: '推理等级',
+    effortDefault: '默认',
     scrollToBottom: '回到最新消息',
+    copyMessage: '复制',
+    copied: '已复制',
   },
 }
 
