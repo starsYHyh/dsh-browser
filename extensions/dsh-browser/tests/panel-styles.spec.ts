@@ -92,4 +92,20 @@ describe('panel layout styles', () => {
     expect(app).not.toMatch(/text-size-trigger/)
     expect(app).not.toMatch(/TextSizePanel/)
   })
+
+  it('uses the desktop copy artwork instead of a text label', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const button = styles.match(/\.message-copy\s*\{([^}]*)\}/)?.[1]
+    const artwork = styles.match(/\.message-copy svg\s*\{([^}]*)\}/)?.[1]
+    const app = readFileSync(`${process.cwd()}/src/panel/App.tsx`, 'utf8')
+
+    expect(button).toBeDefined()
+    expect(button).toMatch(/place-items:\s*center;/)
+    expect(artwork).toBeDefined()
+    expect(artwork).toMatch(/width:/)
+    expect(app).toMatch(/<CopyIcon \/>/)
+    expect(app).toMatch(/<CopiedIcon \/>/)
+    // The label survives only as the accessible name, never as the button text.
+    expect(app).not.toMatch(/\{copied \? copy\.app\.copied : copy\.app\.copyMessage\}\s*<\/button>/)
+  })
 })

@@ -11,3 +11,18 @@ export function isNearScrollBottom(
 ): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
 }
+
+/**
+ * Put the conversation scrollport back where the user left it.
+ *
+ * Leaving the panel (for example to open settings) unmounts the scrollport, so
+ * it comes back at offset 0 — the first message. Restore the reading position:
+ * a user who was following the newest row keeps following it, and a user who
+ * had scrolled up gets their offset back.
+ */
+export function restoreConversationScroll(
+  element: Pick<HTMLElement, 'scrollTop' | 'scrollHeight'>,
+  state: { atBottom: boolean; offset: number },
+): void {
+  element.scrollTop = state.atBottom ? element.scrollHeight : state.offset
+}

@@ -70,7 +70,7 @@ import {
   restoreSubmittedDraft,
   type ComposerDraft,
 } from './composer.ts'
-import { isNearScrollBottom } from './scroll.ts'
+import { isNearScrollBottom, restoreConversationScroll } from './scroll.ts'
 import {
   latestSessionTitle,
   projectedSessionTitle,
@@ -597,6 +597,32 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Copy artwork taken verbatim from the desktop app's message copy button
+ * (`IconCopyOutlineRegular` in dsh-client-ui-primitives): a 16×16 outline with a
+ * 1px stroke, so the panel's copy affordance matches the desktop one.
+ */
+function CopyIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" strokeWidth={1} aria-hidden="true">
+      <rect x="1.52075" y="4.07373" width="10.3932" height="10.3932" rx="2" stroke="currentColor" />
+      <path
+        d="M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 10.3756 13.9521 11.1987 13.1755 11.6228V10.3298C13.3652 10.0787 13.4792 9.7674 13.4792 9.42847V4.03296C13.4792 3.20453 12.8077 2.53296 11.9792 2.53296H6.58374C6.27966 2.53301 5.99684 2.6235 5.7605 2.77905H4.42358C4.85652 2.03463 5.66056 1.53304 6.58374 1.53296H11.9792Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+/** The desktop app's copied-state check (`IconCheckOutlineRegular`), same outline. */
+function CopiedIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" strokeWidth={1} aria-hidden="true">
+      <path d="M2.25 8.5L5.49732 11.7473C5.90519 12.1552 6.57263 12.1344 6.95426 11.7018L13.75 4" stroke="currentColor" />
+    </svg>
+  )
+}
+
 /** Footer of one message: the event time and a copy action for the visible text. */
 const MessageMeta = memo(function MessageMeta({ row, text, copy }: { row: Row; text: string; copy: PanelCopy }): React.JSX.Element | null {
   const [copied, setCopied] = useState(false)
@@ -616,11 +642,11 @@ const MessageMeta = memo(function MessageMeta({ row, text, copy }: { row: Row; t
         <button
           type="button"
           className={`message-copy${copied ? ' copied' : ''}`}
-          aria-label={copy.app.copyMessage}
+          aria-label={copied ? copy.app.copied : copy.app.copyMessage}
           title={copied ? copy.app.copied : copy.app.copyMessage}
           onClick={() => { void copyTextToClipboard(text).then((ok) => { if (ok) setCopied(true) }) }}
         >
-          {copied ? copy.app.copied : copy.app.copyMessage}
+          {copied ? <CopiedIcon /> : <CopyIcon />}
         </button>
       ) : null}
     </div>
@@ -798,6 +824,7 @@ export function App(): React.JSX.Element {
   const sessionRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
+  const scrollOffsetRef = useRef(0)
   const [atBottom, setAtBottom] = useState(true)
 
   const nextSeq = (): number => { seqRef.current += 1; return seqRef.current }
@@ -805,6 +832,7 @@ export function App(): React.JSX.Element {
   function syncScrollBottom(): void {
     const element = scrollRef.current
     if (element === null) return
+    scrollOffsetRef.current = element.scrollTop
     const next = isNearScrollBottom(element)
     atBottomRef.current = next
     setAtBottom((current) => current === next ? current : next)
@@ -991,6 +1019,17 @@ export function App(): React.JSX.Element {
     )
     if (sessionId !== undefined && queuedApproval !== undefined) void focusApprovalSession(queuedApproval)
   }, [queuedApproval?.id, queuedApproval?.sessionId, sessionChanging, state])
+
+  // Leaving the panel for settings unmounts the scrollport, so it would come
+  // back showing the first message. Put the reading position back before the
+  // paint: the bottom when the user was following the newest row, otherwise
+  // the offset they had scrolled to.
+  useLayoutEffect(() => {
+    if (showSettings) return
+    const element = scrollRef.current
+    if (element === null) return
+    restoreConversationScroll(element, { atBottom: atBottomRef.current, offset: scrollOffsetRef.current })
+  }, [showSettings])
 
   // Stick to the newest row only while the user is already near the bottom.
   useLayoutEffect(() => {
