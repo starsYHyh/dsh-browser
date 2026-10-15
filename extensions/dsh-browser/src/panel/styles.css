@@ -3172,6 +3172,32 @@ textarea:focus-visible {
   background: var(--canvas-deep);
 }
 
+/* 行内代码、问题序号、禁用的输入框按钮同样硬编码了浅色填充，暗色模式下会
+   变成浅底浅字（文字继承的是深色主题的浅色墨水）。这里改成从主题令牌推导，
+   百分比对齐浅色设计里的对比度。 */
+:root[data-theme='dark'] .row .body.md code {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+/* 代码块自带深色填充，只让行内代码用上面那套底色。 */
+:root[data-theme='dark'] .row .body.md pre code {
+  border: 0;
+  background: transparent;
+}
+:root[data-theme='dark'] .question-index {
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+:root[data-theme='dark'] .composer-actions button:disabled {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--faint);
+}
+:root[data-theme='dark'] .approval-actions .session-trust:hover,
+:root[data-theme='dark'] .approval-actions .read-always:hover {
+  border-color: var(--security-border);
+  background: var(--security-soft);
+}
+
 /* ── 模型/推理等级移入输入框右下角(local) ─────────────────────────── */
 .composer-actions-end {
   display: flex;

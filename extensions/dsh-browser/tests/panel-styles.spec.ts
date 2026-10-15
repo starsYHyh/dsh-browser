@@ -34,4 +34,22 @@ describe('panel layout styles', () => {
     expect(menuRule).toMatch(/(?:^|\n)\s*position:\s*absolute;/)
     expect(menuRule).toMatch(/(?:^|\n)\s*bottom:\s*calc\(100% \+ 6px\);/)
   })
+
+  it('keeps inline code and light-filled chips readable in dark mode', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const darkRule = (selector: string): string | undefined =>
+      styles.match(new RegExp(`:root\\[data-theme='dark'\\] ${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[1]
+
+    // These base rules hardcode light fills, so each needs a dark override:
+    // without one the dark theme's light ink lands on a light chip.
+    for (const selector of ['.row .body.md code', '.question-index', '.composer-actions button:disabled']) {
+      const rule = darkRule(selector)
+      expect(rule, `${selector} needs a dark-mode override`).toBeDefined()
+      expect(rule ?? '').toMatch(/(?:^|\n)\s*background:/)
+    }
+
+    // Inline code only: a fenced code block keeps its own dark fill, so the
+    // dark override must reset the chip treatment back to transparent.
+    expect(darkRule('.row .body.md pre code')).toMatch(/(?:^|\n)\s*background:\s*transparent;/)
+  })
 })
