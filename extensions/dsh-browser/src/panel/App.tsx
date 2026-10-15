@@ -46,6 +46,7 @@ import {
 } from './selection.ts'
 import {
   MAX_TAB_MENTIONS,
+  mentionPickerKeyAction,
   splitTabMentionMessage,
   tabMentionPromptText,
   tabMentionSourceLabel,
@@ -322,15 +323,6 @@ function BackIcon(): React.JSX.Element {
   )
 }
 
-function TextSizeIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M2.5 14.5 6.25 5h1.5l3.75 9.5M4.1 11.4h5.8" />
-      <path d="M12.4 14.5 15 7.6h1.1l2.6 6.9M13.5 12.4h4.1" />
-    </svg>
-  )
-}
-
 function MinusIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -348,8 +340,8 @@ function ShieldIcon(): React.JSX.Element {
   )
 }
 
-/** Stepper for the panel-wide text scale; see `ui-scale.ts` for the model. */
-function TextSizePanel({
+/** Text-scale stepper, rendered as one row of the settings view; see `ui-scale.ts`. */
+function TextSizeSetting({
   scale,
   copy,
   onStep,
@@ -361,25 +353,30 @@ function TextSizePanel({
   onReset: () => void
 }): React.JSX.Element {
   return (
-    <section className="text-size-panel" aria-label={copy.textSize.title}>
-      <strong>{copy.textSize.title}</strong>
-      <div className="text-size-stepper">
-        <button type="button" disabled={uiScaleAtLimit(scale, -1)}
-          onClick={() => onStep(-1)}
-          aria-label={copy.textSize.smaller} title={copy.textSize.smaller}>
-          <MinusIcon />
-        </button>
-        <span className="text-size-value" role="status"
-          aria-label={copy.textSize.value(formatUiScale(scale))}>{formatUiScale(scale)}</span>
-        <button type="button" disabled={uiScaleAtLimit(scale, 1)}
-          onClick={() => onStep(1)}
-          aria-label={copy.textSize.larger} title={copy.textSize.larger}>
-          <PlusIcon />
-        </button>
+    <div className="text-size-setting">
+      <span className="text-size-setting-copy">
+        <strong>{copy.textSize.title}</strong>
+        <small>{copy.textSize.help}</small>
+      </span>
+      <div className="text-size-controls">
+        <div className="text-size-stepper">
+          <button type="button" disabled={uiScaleAtLimit(scale, -1)}
+            onClick={() => onStep(-1)}
+            aria-label={copy.textSize.smaller} title={copy.textSize.smaller}>
+            <MinusIcon />
+          </button>
+          <span className="text-size-value" role="status"
+            aria-label={copy.textSize.value(formatUiScale(scale))}>{formatUiScale(scale)}</span>
+          <button type="button" disabled={uiScaleAtLimit(scale, 1)}
+            onClick={() => onStep(1)}
+            aria-label={copy.textSize.larger} title={copy.textSize.larger}>
+            <PlusIcon />
+          </button>
+        </div>
+        <button type="button" className="text-size-reset" disabled={scale === DEFAULT_UI_SCALE}
+          onClick={onReset}>{copy.textSize.reset}</button>
       </div>
-      <button type="button" className="text-size-reset" disabled={scale === DEFAULT_UI_SCALE}
-        onClick={onReset}>{copy.textSize.reset}</button>
-    </section>
+    </div>
   )
 }
 
@@ -738,6 +735,8 @@ export function App(): React.JSX.Element {
   const [mentionOptions, setMentionOptions] = useState<TabMention[]>([])
   const [mentionStatus, setMentionStatus] = useState<{ state: 'loading' | 'ready' | 'failed'; reason: string }>({ state: 'ready', reason: '' })
   const [mentionHighlight, setMentionHighlight] = useState(-1)
+  const mentionPickerRef = useRef<HTMLDivElement | null>(null)
+  const mentionButtonRef = useRef<HTMLButtonElement | null>(null)
   const input = draft.text
   const draftImages = draft.images
   const [selection, setSelection] = useState<PageSelection | null>(null)
@@ -750,7 +749,6 @@ export function App(): React.JSX.Element {
   const [uiScale, setUiScale] = useState(DEFAULT_UI_SCALE)
   const uiScaleRef = useRef(DEFAULT_UI_SCALE)
   const uiScaleChosenRef = useRef(false)
-  const [showTextSize, setShowTextSize] = useState(false)
   const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([])
   const [tabAffinity, setTabAffinity] = useState<TabAffinityState | null>(null)
   const [trustedOriginInput, setTrustedOriginInput] = useState('')
@@ -1682,7 +1680,9 @@ export function App(): React.JSX.Element {
   /** Open the @标签页 picker and refresh its options from the live tab list. */
   function openMentionPicker(query: string): void {
     setMentionPicker({ open: true, query })
-    setMentionHighlight(-1)
+    // Pre-highlight the first option: while the picker is open, Enter must pick
+    // a tab or dismiss the picker, never send the message.
+    setMentionHighlight(0)
     // Keep keyboard focus in the composer so ↑/↓/Enter reach the textarea.
     composerTextareaRef.current?.focus()
     setMentionStatus({ state: 'loading', reason: '' })
@@ -1701,6 +1701,40 @@ export function App(): React.JSX.Element {
     })
   }
 
+  /**
+   * Dismiss the picker without picking a tab. Every exit (the @ trigger, the
+   * close button, Escape, a click outside) goes through here, so the picker is
+   * never a dead end and closing it leaves the draft exactly as it was.
+   */
+  function closeMentionPicker(): void {
+    setMentionPicker({ open: false, query: '' })
+    setMentionHighlight(-1)
+  }
+
+  // Escape or a click anywhere outside the picker closes it, even when focus
+  // sits on the close button or the @ trigger rather than the textarea.
+  useEffect(() => {
+    if (!mentionPicker.open) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeMentionPicker()
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (mentionPickerRef.current?.contains(target) === true) return
+      if (mentionButtonRef.current?.contains(target) === true) return
+      closeMentionPicker()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [mentionPicker.open])
+
   /** Insert one tab as an inline @标题 token in place of the typed @query. */
   function addMention(tab: TabMention): void {
     const label = tab.title.trim() === '' ? tab.url : tab.title.trim()
@@ -1714,8 +1748,7 @@ export function App(): React.JSX.Element {
       const token = `@${label}`
       return { ...current, text: base === '' ? token : `${base} ${token}` }
     })
-    setMentionPicker({ open: false, query: '' })
-    setMentionHighlight(-1)
+    closeMentionPicker()
   }
 
   /** Picker options narrowed by the typed query (shared by render and keyboard). */
@@ -2219,6 +2252,9 @@ export function App(): React.JSX.Element {
               <option value="dark">{copy.settings.themeDark}</option>
             </select>
           </label>
+          <TextSizeSetting scale={uiScale} copy={copy}
+            onStep={(direction) => changeUiScale(stepUiScale(uiScaleRef.current, direction))}
+            onReset={() => changeUiScale(DEFAULT_UI_SCALE)} />
         </div>
         <div className="settings-panel preference-toggles">
           <label className="setting-toggle">
@@ -2417,10 +2453,6 @@ export function App(): React.JSX.Element {
             aria-label={copy.app.newSession} title={copy.app.newSession}>
             <PlusIcon />
           </button>
-          <button className="icon-button text-size-trigger" onClick={() => setShowTextSize((open) => !open)}
-            aria-expanded={showTextSize} aria-label={copy.textSize.open} title={copy.textSize.open}>
-            <TextSizeIcon />
-          </button>
           <button className="icon-button settings-trigger" onClick={() => {
             setShowModelPicker(false)
             setShowSettings(true)
@@ -2428,11 +2460,6 @@ export function App(): React.JSX.Element {
             aria-label={copy.app.openSettings} title={copy.app.settings}><SettingsIcon /></button>
         </div>
       </header>
-      {showTextSize && (
-        <TextSizePanel scale={uiScale} copy={copy}
-          onStep={(direction) => changeUiScale(stepUiScale(uiScaleRef.current, direction))}
-          onReset={() => changeUiScale(DEFAULT_UI_SCALE)} />
-      )}
       <TabAffinityBanner state={tabAffinity} copy={copy} onDecision={decideTabAffinity} />
       {showSessionPicker && (
         <section className="session-picker" aria-label={copy.app.sessions}>
@@ -2539,8 +2566,13 @@ export function App(): React.JSX.Element {
       <footer className="composer">
         <div className="composer-box">
           {mentionPicker.open && (
-            <div className="tab-mention-picker" role="listbox" aria-label={copy.app.tabMentionPicker}>
-              <div className="tab-mention-picker-head">{copy.app.tabMentionPicker}</div>
+            <div className="tab-mention-picker" role="listbox" aria-label={copy.app.tabMentionPicker} ref={mentionPickerRef}>
+              <div className="tab-mention-picker-head">
+                <span>{copy.app.tabMentionPicker}</span>
+                <button type="button" className="tab-mention-close"
+                  aria-label={copy.app.tabMentionClose} title={copy.app.tabMentionClose}
+                  onClick={closeMentionPicker}>×</button>
+              </div>
               {filteredMentionOptions().map((tab, index) => (
                 <button
                   key={tab.tabId}
@@ -2607,33 +2639,32 @@ export function App(): React.JSX.Element {
               if (match !== null) {
                 openMentionPicker(match[2])
               } else if (mentionPicker.open) {
-                setMentionPicker((current) => ({ ...current, open: false }))
+                closeMentionPicker()
               }
             }}
             onKeyDown={(e) => {
               if (mentionPicker.open) {
-                const filtered = filteredMentionOptions()
-                if (e.key === 'ArrowDown') {
+                const action = mentionPickerKeyAction(e.key, {
+                  highlight: mentionHighlight,
+                  optionCount: filteredMentionOptions().length,
+                  composing: e.nativeEvent.isComposing,
+                  shiftKey: e.shiftKey,
+                })
+                if (action.type === 'highlight') {
                   e.preventDefault()
-                  setMentionHighlight((h) => (filtered.length === 0 ? -1 : Math.min(h + 1, filtered.length - 1)))
+                  setMentionHighlight(action.index)
                   return
                 }
-                if (e.key === 'ArrowUp') {
+                if (action.type === 'pick') {
                   e.preventDefault()
-                  setMentionHighlight((h) => Math.max(h - 1, 0))
+                  const tab = filteredMentionOptions()[action.index]
+                  if (tab !== undefined) addMention(tab)
                   return
                 }
-                if (e.key === 'Escape') {
+                if (action.type === 'dismiss') {
                   e.preventDefault()
-                  setMentionPicker({ open: false, query: '' })
+                  closeMentionPicker()
                   return
-                }
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  if (mentionHighlight >= 0 && mentionHighlight < filtered.length) {
-                    e.preventDefault()
-                    addMention(filtered[mentionHighlight])
-                    return
-                  }
                 }
               }
               // isComposing：输入法组词中的回车是确认选字，不是发送。
@@ -2672,11 +2703,19 @@ export function App(): React.JSX.Element {
               ><AttachmentIcon /></button>
               <button
                 type="button"
+                ref={mentionButtonRef}
                 className="attachment-button"
                 disabled={!sessionReady || busy || addingImages}
                 aria-label={copy.app.tabMentionAdd}
+                aria-expanded={mentionPicker.open}
                 title={copy.app.tabMentionAdd}
-                onClick={() => openMentionPicker('')}
+                onClick={() => {
+                  if (mentionPicker.open) {
+                    closeMentionPicker()
+                    return
+                  }
+                  openMentionPicker('')
+                }}
               ><span className="tab-mention-at" aria-hidden="true">@</span></button>
               <span>{copy.app.composerHelp}</span>
             </span>

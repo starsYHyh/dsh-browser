@@ -155,3 +155,43 @@ export function tabMentionSourceLabel(mention: TabMention): string {
     return ''
   }
 }
+
+/** What one key press means while the @标签页 picker is open. */
+export type MentionPickerAction =
+  | { type: 'none' }
+  | { type: 'highlight'; index: number }
+  | { type: 'pick'; index: number }
+  | { type: 'dismiss' }
+
+/**
+ * Decide how the composer reacts to a key while the picker is open.
+ *
+ * Every branch is explicit so the caller never falls through: with the picker
+ * open, Enter either picks a tab or dismisses the picker — it can never leak
+ * into "send the message", which is what made the picker feel like a trap when
+ * it was opened from the @ button and no tab was highlighted.
+ *
+ * Escape always dismisses, and IME composition is left to the input element.
+ */
+export function mentionPickerKeyAction(
+  key: string,
+  state: { highlight: number; optionCount: number; composing: boolean; shiftKey: boolean },
+): MentionPickerAction {
+  if (state.composing) return { type: 'none' }
+  if (key === 'Escape') return { type: 'dismiss' }
+  if (key === 'ArrowDown') {
+    if (state.optionCount === 0) return { type: 'highlight', index: -1 }
+    const from = state.highlight < 0 ? -1 : Math.min(state.highlight, state.optionCount - 1)
+    return { type: 'highlight', index: Math.min(from + 1, state.optionCount - 1) }
+  }
+  if (key === 'ArrowUp') {
+    if (state.optionCount === 0) return { type: 'highlight', index: -1 }
+    return { type: 'highlight', index: Math.max(Math.min(state.highlight, state.optionCount - 1) - 1, 0) }
+  }
+  if (key === 'Enter' && !state.shiftKey) {
+    if (state.optionCount === 0) return { type: 'dismiss' }
+    const index = state.highlight < 0 ? 0 : Math.min(state.highlight, state.optionCount - 1)
+    return { type: 'pick', index }
+  }
+  return { type: 'none' }
+}

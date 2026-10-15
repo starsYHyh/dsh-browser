@@ -52,4 +52,44 @@ describe('panel layout styles', () => {
     // dark override must reset the chip treatment back to transparent.
     expect(darkRule('.row .body.md pre code')).toMatch(/(?:^|\n)\s*background:\s*transparent;/)
   })
+
+  it('lets the composer textarea grow instead of capping the visible draft', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const textarea = styles.match(/\.composer textarea\s*\{([^}]*)\}/)?.[1]
+
+    expect(textarea).toBeDefined()
+    expect(textarea).toMatch(/(?:^|\n)\s*resize:\s*vertical;/)
+    // The fixed 150px cap is what made a long draft unreadable.
+    expect(textarea).not.toMatch(/(?:^|\n)\s*max-height:\s*150px;/)
+    expect(textarea).toMatch(/(?:^|\n)\s*max-height:\s*min\(60vh, 480px\);/)
+  })
+
+  it('gives the @标签页 picker a close control of its own', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const close = styles.match(/\.tab-mention-close\s*\{([^}]*)\}/)?.[1]
+
+    expect(close).toBeDefined()
+    expect(close).toMatch(/cursor:\s*pointer;/)
+    expect(close).toMatch(/place-items:\s*center;/)
+  })
+
+  it('scales every local @标签页 font size through the scale token', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const mentionBlock = styles.slice(styles.indexOf('/* @标签页 tab mentions'))
+
+    expect(mentionBlock).not.toMatch(/font-size:\s*\d/)
+  })
+
+  it('renders the text-size control inside settings, not beside the title', () => {
+    const app = readFileSync(`${process.cwd()}/src/panel/App.tsx`, 'utf8')
+    const settingsStart = app.indexOf('className="settings"')
+    const settingsEnd = app.indexOf('</div>{approvalDialog}</>')
+
+    expect(settingsStart).toBeGreaterThan(-1)
+    expect(settingsEnd).toBeGreaterThan(settingsStart)
+    expect(app.slice(settingsStart, settingsEnd)).toMatch(/<TextSizeSetting/)
+    // The title bar keeps only the new-session and settings buttons.
+    expect(app).not.toMatch(/text-size-trigger/)
+    expect(app).not.toMatch(/TextSizePanel/)
+  })
 })

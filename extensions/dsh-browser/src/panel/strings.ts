@@ -128,8 +128,8 @@ export interface PanelCopy {
     relayInvalidName: string
   }
   textSize: {
-    open: string
     title: string
+    help: string
     smaller: string
     larger: string
     reset: string
@@ -190,6 +190,7 @@ export interface PanelCopy {
     removeSelection: string
     tabMentionAdd: string
     tabMentionPicker: string
+    tabMentionClose: string
     tabMentionEmpty: string
     tabMentionLoading: string
     tabMentionFailed: (reason: string) => string
@@ -352,8 +353,8 @@ const EN: PanelCopy = {
     relayInvalidName: 'Enter a profile name.',
   },
   textSize: {
-    open: 'Text size',
     title: 'Text size',
+    help: 'Scales the panel text; spacing and icons keep their size.',
     smaller: 'Smaller text',
     larger: 'Larger text',
     reset: 'Reset',
@@ -414,6 +415,7 @@ const EN: PanelCopy = {
     removeSelection: 'Remove the selected text',
     tabMentionAdd: 'Reference a tab (@)',
     tabMentionPicker: 'Reference a tab as context',
+    tabMentionClose: 'Close the tab picker',
     tabMentionEmpty: 'No tabs to reference',
     tabMentionLoading: 'Loading tabs…',
     tabMentionFailed: (reason) => `Could not list tabs: ${reason}`,
@@ -576,8 +578,8 @@ const ZH: PanelCopy = {
     relayInvalidName: '请填写档案名称。',
   },
   textSize: {
-    open: '字号',
     title: '字号',
+    help: '只缩放面板文字，间距与图标保持原大小。',
     smaller: '缩小字号',
     larger: '放大字号',
     reset: '恢复默认',
@@ -638,6 +640,7 @@ const ZH: PanelCopy = {
     removeSelection: '移除选中内容',
     tabMentionAdd: '引用标签页（@）',
     tabMentionPicker: '引用标签页作为上下文',
+    tabMentionClose: '关闭标签页选择',
     tabMentionEmpty: '没有可引用的标签页',
     tabMentionLoading: '正在加载标签页…',
     tabMentionFailed: (reason) => `无法获取标签页列表：${reason}`,
