@@ -130,8 +130,26 @@ describe('panel layout styles', () => {
       expect(styles, `${token} must be defined`).toContain(`${token}:`)
     }
 
-    // The dark theme keeps the card dark enough for that palette to stay legible.
+    // Both themes carry their own values: a white card in light mode with the
+    // desktop's light tokens, and the desktop's dark card with dark tokens.
+    expect(styles).toMatch(/--code-block-bg:\s*#ffffff;/)
+    expect(styles).toMatch(/--shiki-token-keyword:\s*#d6336c;/)
     const darkBlock = styles.match(/:root\[data-theme='dark'\]\s*\{([^}]*)\}/)?.[1] ?? ''
     expect(darkBlock).toMatch(/--code-block-bg:\s*#1b1b1c;/)
+    expect(darkBlock).toMatch(/--shiki-token-keyword:\s*#faa2c1;/)
+  })
+
+  it('spans the pane for code blocks and gives them a header', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+
+    // Messages carrying a fence stop hugging their content, so every code card
+    // is the same width.
+    const widthRule = styles.match(/\.row \.body:has\(\.md pre\)\s*\{([^}]*)\}/)?.[1]
+    expect(widthRule).toMatch(/width:\s*100%;/)
+
+    const head = styles.match(/\.code-block-head\s*\{([^}]*)\}/)?.[1]
+    const copy = styles.match(/\.code-block-copy\s*\{([^}]*)\}/)?.[1]
+    expect(head).toMatch(/justify-content:\s*space-between;/)
+    expect(copy).toMatch(/place-items:\s*center;/)
   })
 })

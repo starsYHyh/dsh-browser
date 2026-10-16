@@ -15,6 +15,7 @@ import type { BridgeState } from '../background/bridge.ts'
 import type { AffinityTab, TabAffinityDecision, TabAffinityState } from '../background/tab-affinity.ts'
 import { connectPanel, PanelRpcError, type PanelApi, type PanelSettings } from './api.ts'
 import { renderMarkdown } from './markdown.ts'
+import { COPIED_ICON_SVG, COPY_ICON_SVG } from './icons.ts'
 import whaleUrl from '../../assets/icons/deepseek-256.png'
 import type { ApprovalDecision, ApprovalRequest } from '../security/approval.ts'
 import { getUiLocale } from '../i18n.ts'
@@ -603,24 +604,12 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
  * 1px stroke, so the panel's copy affordance matches the desktop one.
  */
 function CopyIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" strokeWidth={1} aria-hidden="true">
-      <rect x="1.52075" y="4.07373" width="10.3932" height="10.3932" rx="2" stroke="currentColor" />
-      <path
-        d="M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 10.3756 13.9521 11.1987 13.1755 11.6228V10.3298C13.3652 10.0787 13.4792 9.7674 13.4792 9.42847V4.03296C13.4792 3.20453 12.8077 2.53296 11.9792 2.53296H6.58374C6.27966 2.53301 5.99684 2.6235 5.7605 2.77905H4.42358C4.85652 2.03463 5.66056 1.53304 6.58374 1.53296H11.9792Z"
-        fill="currentColor"
-      />
-    </svg>
-  )
+  return <span className="copy-icon" dangerouslySetInnerHTML={{ __html: COPY_ICON_SVG }} />
 }
 
 /** The desktop app's copied-state check (`IconCheckOutlineRegular`), same outline. */
 function CopiedIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" strokeWidth={1} aria-hidden="true">
-      <path d="M2.25 8.5L5.49732 11.7473C5.90519 12.1552 6.57263 12.1344 6.95426 11.7018L13.75 4" stroke="currentColor" />
-    </svg>
-  )
+  return <span className="copy-icon" dangerouslySetInnerHTML={{ __html: COPIED_ICON_SVG }} />
 }
 
 /** Footer of one message: the event time and a copy action for the visible text. */
@@ -664,6 +653,32 @@ const MessageBody = memo(function MessageBody({
   api: PanelApi
   copy: PanelCopy
 }): React.JSX.Element {
+  /**
+   * Copy a code block from the button in its header.
+   *
+   * That button is part of the sanitized markdown HTML, so React does not own
+   * it: delegate the click here and swap the icon in place.
+   */
+  function copyCodeBlock(event: React.MouseEvent<HTMLDivElement>): void {
+    const target = event.target instanceof Element ? event.target.closest('[data-code-copy]') : null
+    if (!(target instanceof HTMLButtonElement)) return
+    const code = target.closest('.code-block')?.querySelector('pre code')
+    if (code === null || code === undefined) return
+    const label = copy.app.copyMessage
+    // Shiki's markup ends the final line with a newline; copying code should not.
+    void copyTextToClipboard((code.textContent ?? '').replace(/\n$/u, '')).then((ok) => {
+      if (!ok) return
+      target.innerHTML = COPIED_ICON_SVG
+      target.setAttribute('aria-label', copy.app.copied)
+      target.setAttribute('title', copy.app.copied)
+      window.setTimeout(() => {
+        target.innerHTML = COPY_ICON_SVG
+        target.setAttribute('aria-label', label)
+        target.setAttribute('title', label)
+      }, 1600)
+    })
+  }
+
   if (row.kind === 'user' || row.kind === 'assistant') {
     // A user message may carry a page quote; show the quote, not its fence.
     const mentionAttached = row.kind === 'user' ? splitTabMentionMessage(row.text) : null
@@ -696,7 +711,13 @@ const MessageBody = memo(function MessageBody({
             label={copy.app.selectionAttached}
           />
         )}
-        {text.trim() !== '' && <div className="md" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />}
+        {text.trim() !== '' && (
+          <div
+            className="md"
+            onClick={copyCodeBlock}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(text, { copy: copy.app.copyMessage }) }}
+          />
+        )}
         <MessageMeta row={row} text={text} copy={copy} />
       </div>
     )

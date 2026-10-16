@@ -51,6 +51,21 @@ describe('renderMarkdown', () => {
     }
   })
 
+  it('gives every code block a language label and a copy button', () => {
+    const tagged = renderMarkdown('```bash\necho "hi"\n```', { copy: '复制' })
+
+    expect(tagged).toContain('class="code-block"')
+    expect(tagged).toContain('<span class="code-block-lang">bash</span>')
+    expect(tagged).toContain('data-code-copy')
+    expect(tagged).toContain('aria-label="复制"')
+    expect(tagged).toContain('<svg viewBox="0 0 16 16"')
+
+    // An untagged fence still gets the button, just with nothing beside it.
+    const plain = renderMarkdown('```\nplain\n```')
+    expect(plain).toContain('<span class="code-block-lang"></span>')
+    expect(plain).toContain('data-code-copy')
+  })
+
   it('leaves an unknown fence and inline code as plain text', () => {
     const unknown = renderMarkdown('```nosuchlang\nconst x = 1\n```')
     expect(unknown).not.toContain('var(--shiki-token-')
