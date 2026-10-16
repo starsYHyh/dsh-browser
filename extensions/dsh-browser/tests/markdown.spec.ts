@@ -2,6 +2,13 @@
 import { describe, expect, it } from 'vitest'
 import { renderMarkdown } from '../src/panel/markdown.ts'
 
+/** Visible text of a rendered fragment, so token spans do not break assertions. */
+function textOf(html: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  return template.content.textContent ?? ''
+}
+
 describe('renderMarkdown', () => {
   it('renders common markdown constructs', () => {
     const html = renderMarkdown('# 标题\n\n**加粗** 和 `code`\n\n- 甲\n- 乙\n\n> 引用')
@@ -17,7 +24,56 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<table>')
     expect(html).toContain('<td>1</td>')
     expect(html).toContain('<pre><code')
-    expect(html).toContain('const x = 1')
+    expect(textOf(html)).toContain('const x = 1')
+  })
+
+  it('colors a fenced block with the desktop shiki palette', () => {
+    const html = renderMarkdown('```ts\nconst answer: number = 41 // note\n```')
+
+    // Shiki's CSS-variables theme, wired to the panel's --shiki-* sheet.
+    expect(html).toContain('var(--shiki-token-keyword)')
+    expect(html).toContain('<span class="line">')
+    expect(textOf(html)).toContain('const answer: number = 41 // note')
+  })
+
+  it('highlights the aliases users actually write', () => {
+    const samples: Record<string, string> = {
+      bash: 'echo "hi" # note',
+      js: 'const value = "x"',
+      json: '{"value": "x"}',
+      python: 'value = "x"',
+      sql: 'SELECT "x" FROM t',
+      yml: 'value: "x"',
+    }
+    for (const [fence, code] of Object.entries(samples)) {
+      const html = renderMarkdown(`\`\`\`${fence}\n${code}\n\`\`\``)
+      expect(html, `${fence} should be highlighted`).toContain('var(--shiki-token-')
+    }
+  })
+
+  it('leaves an unknown fence and inline code as plain text', () => {
+    const unknown = renderMarkdown('```nosuchlang\nconst x = 1\n```')
+    expect(unknown).not.toContain('var(--shiki-token-')
+    expect(textOf(unknown)).toContain('const x = 1')
+
+    const inline = renderMarkdown('内联 `const x = 1` 代码')
+    expect(inline).not.toContain('var(--shiki-token-')
+    expect(inline).toContain('<code>const x = 1</code>')
+  })
+
+  it('leaves a block too large to tokenize as plain text', () => {
+    const html = renderMarkdown(`\`\`\`ts\n${'const value = 1\n'.repeat(2000)}\`\`\``)
+    expect(html).not.toContain('var(--shiki-token-')
+    expect(textOf(html)).toContain('const value = 1')
+  })
+
+  it('keeps only a fence language hint and strips model-authored classes', () => {
+    const html = renderMarkdown('<code class="evil">x</code>\n\n```ts\nconst ok = 1\n```')
+
+    expect(html).not.toContain('class="evil"')
+    // The surviving class is the fence hint the highlighter consumed.
+    expect(html).not.toContain('class="language-ts"')
+    expect(html).not.toContain('<span class="evil"')
   })
 
   it('breaks single newlines into <br> (chat-style text)', () => {

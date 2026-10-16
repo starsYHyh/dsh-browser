@@ -108,4 +108,30 @@ describe('panel layout styles', () => {
     // The label survives only as the accessible name, never as the button text.
     expect(app).not.toMatch(/\{copied \? copy\.app\.copied : copy\.app\.copyMessage\}\s*<\/button>/)
   })
+
+  it('defines every shiki token the highlighted code blocks can reference', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+
+    // A missing variable would silently fall back to shiki's own default color,
+    // so the whole palette the CSS-variables theme can emit must be defined.
+    for (const token of [
+      '--shiki-foreground',
+      '--shiki-background',
+      '--shiki-token-constant',
+      '--shiki-token-string',
+      '--shiki-token-comment',
+      '--shiki-token-keyword',
+      '--shiki-token-parameter',
+      '--shiki-token-function',
+      '--shiki-token-string-expression',
+      '--shiki-token-punctuation',
+      '--shiki-token-link',
+    ]) {
+      expect(styles, `${token} must be defined`).toContain(`${token}:`)
+    }
+
+    // The dark theme keeps the card dark enough for that palette to stay legible.
+    const darkBlock = styles.match(/:root\[data-theme='dark'\]\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(darkBlock).toMatch(/--code-block-bg:\s*#1b1b1c;/)
+  })
 })
