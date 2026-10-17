@@ -29,8 +29,11 @@ export const DISCOVERY_PORT = 43189
 export interface DiscoveryServerOptions {
   /** Path whose answer the extension expects. */
   configPath: string
-  /** The bridge WebSocket URL to advertise; read per request, not at start. */
-  bridgeWsUrl: () => string
+  /**
+   * The discovery payload to serve; read per request, not at start, because the
+   * web server's random port settles after this listener starts.
+   */
+  payload: () => Record<string, unknown>
   /** Port to claim; defaults to {@link DISCOVERY_PORT}. */
   port?: number
   /** Loopback interface to bind; defaults to `127.0.0.1`. */
@@ -56,7 +59,7 @@ export function startDiscoveryServer(options: DiscoveryServerOptions): Server {
     // No secret here: the URL is the same one the web server publishes, and the
     // bridge still authenticates non-loopback clients by token.
     response.writeHead(200, { 'content-type': 'application/json' })
-    response.end(JSON.stringify({ wsUrl: options.bridgeWsUrl() }))
+    response.end(JSON.stringify(options.payload()))
   })
   server.once('error', (error: Error) => {
     options.onError?.(error)

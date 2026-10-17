@@ -44,7 +44,41 @@ export interface TypertGatewayLike {
     readonly method: string
     readonly args: Readonly<Record<string, unknown>>
     readonly signal?: AbortSignal
+    readonly peer?: LocalPeer
   }): Promise<unknown>
+}
+
+/**
+ * A Gateway Peer as dsh 0.2.1 models it.
+ *
+ * 0.2.1 runs `assertPeerLive(peer)` and `requireInteractions(peer)` on every
+ * Gateway call and refuses forwarded Remote events from a non-owner principal,
+ * so the Peer must be a real object rather than the `undefined` that 0.2.0
+ * tolerated.
+ */
+export interface LocalPeer {
+  readonly signal: AbortSignal
+  readonly interactions: 'answer'
+  readonly principal: { readonly kind: 'owner' }
+}
+
+/** Signal handed to calls that carry none of their own. */
+const NEVER_ABORTED_SIGNAL = new AbortController().signal
+
+/**
+ * The Peer an in-process Host caller presents.
+ *
+ * The bridge is a Host plugin: it has no remote Gateway peer, and it runs its
+ * own fence (bearer token, loopback/Origin admission, privileged-method refusal
+ * for non-loopback remotes) before anything reaches the Gateway. It therefore
+ * presents the owner Peer dsh 0.2.1 requires, bound to the call's own lifetime.
+ */
+export function localPeer(signal: AbortSignal | undefined): LocalPeer {
+  return {
+    signal: signal ?? NEVER_ABORTED_SIGNAL,
+    interactions: 'answer',
+    principal: { kind: 'owner' },
+  }
 }
 
 /**
@@ -70,7 +104,7 @@ function openWireStream(gateway: TypertGatewayLike, endpoint: string, payload: u
   if (open.length === 3) {
     return open(endpoint, payload, signal)
   }
-  return open(endpoint, payload, EMPTY_WIRE_UPLINK, undefined, signal)
+  return open(endpoint, payload, EMPTY_WIRE_UPLINK, localPeer(signal), signal)
 }
 
 /** Structural subset of dsh 0.2's Host Connection service. */
@@ -145,6 +179,7 @@ class RemoteHostApi implements BrowserHostApi {
         method: target.method,
         args: target.args,
         signal: call.signal,
+        peer: localPeer(call.signal),
       })
       // Only claim ownership after a successful create/prompt. A failed prompt
       // against a Desktop session must not steal later ask_user_question away
@@ -212,6 +247,7 @@ class RemoteHostApi implements BrowserHostApi {
             },
           },
           signal: call.signal,
+          peer: localPeer(call.signal),
         })
         return { ok: true, value: historyPageValue(page) }
       }
@@ -233,10 +269,12 @@ class RemoteHostApi implements BrowserHostApi {
     try {
       const catalog = await this.gateway.invoke({
         namespace: 'session', method: 'modelCatalog', args: {}, signal: call.signal,
+        peer: localPeer(call.signal),
       })
       // Provisional Sessions request only the catalog and overlay their pending choice.
       const projections = sessionId === undefined ? undefined : await this.gateway.invoke({
         namespace: 'session', method: 'projections', args: { request: { sessionId } }, signal: call.signal,
+        peer: localPeer(call.signal),
       })
       const values = isRecord(projections) ? projections.values : undefined
       const modelSelection = isRecord(values) ? values.modelSelection : undefined

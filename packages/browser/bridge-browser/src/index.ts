@@ -50,6 +50,9 @@ import { isRecord, type BrowserHostApi } from './host-api.ts'
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'bridge-browser'
 
+/** Build marker reported by discovery, so a running dsh can be identified. */
+const BRIDGE_BUILD = '0.0.9'
+
 /** Services required by this plugin. */
 export const inject = ['webServer', 'typertGateway', 'connection', 'tools', 'agents']
 
@@ -240,12 +243,19 @@ function mountBridge(
   // bridge WebSocket URL without any manual configuration. The URL carries no
   // secret (loopback connections skip the token); non-loopback deployments
   // keep requiring the token on the WS itself.
+  /** Discovery answer shared by the web route and the fixed-port listener. */
+  const discoveryPayload = (): Record<string, unknown> => ({
+    wsUrl: `ws://127.0.0.1:${ctx.webServer.port}${BRIDGE_PATH}`,
+    // Build marker: makes it obvious which bridge code a running dsh loaded,
+    // which a plain wsUrl cannot show after an in-place rebuild.
+    bridge: BRIDGE_BUILD,
+  })
   const configRoute: WebRoute = {
     kind: 'exact',
     path: BRIDGE_CONFIG_PATH,
     handler: (_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ wsUrl: `ws://127.0.0.1:${ctx.webServer.port}${BRIDGE_PATH}` }))
+      res.end(JSON.stringify(discoveryPayload()))
     },
   }
   ctx.effect(() => ctx.webServer.register(configRoute), 'bridge-browser: /ext/bridge-config route')
@@ -257,7 +267,7 @@ function mountBridge(
   ctx.effect(() => {
     const discovery = startDiscoveryServer({
       configPath: BRIDGE_CONFIG_PATH,
-      bridgeWsUrl: () => `ws://127.0.0.1:${ctx.webServer.port}${BRIDGE_PATH}`,
+      payload: discoveryPayload,
       onError: (error) => {
         ctx.logger.info(
           `browser bridge: discovery port ${DISCOVERY_PORT} is taken (${error.message}); `
