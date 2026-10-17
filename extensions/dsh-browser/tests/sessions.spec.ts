@@ -7,9 +7,12 @@ import {
   resumableSessions,
   sessionAcceptsPrompts,
   sessionDisplayTitle,
+  sessionPickerLabel,
   sessionTitleFromEvent,
+  sessionWorkspaceLabel,
   SessionRuntimeCache,
   type SessionPickerEntry,
+  type SessionPickerLabels,
 } from '../src/panel/sessions.ts'
 
 const ordinary: SessionPickerEntry = {
@@ -32,6 +35,60 @@ describe('resumableSessions', () => {
       { ...ordinary, sessionId: 'subagent', origin: 'subagent' },
       ordinary,
     ])).toEqual([ordinary])
+  })
+})
+
+const labels: SessionPickerLabels = {
+  defaultWorkspace: '默认工作区',
+  browserSessions: '浏览器',
+  untitled: '未命名会话',
+}
+
+describe('sessionWorkspaceLabel', () => {
+  it('names the default workspace and the extension group in the panel locale', () => {
+    expect(sessionWorkspaceLabel('/Users/me/documents/default-workspace', labels)).toBe('默认工作区')
+    expect(sessionWorkspaceLabel('/Users/me/.dsh/browser-sessions', labels)).toBe('浏览器')
+  })
+
+  it('uses the folder name for any other workspace, tolerating Windows paths', () => {
+    expect(sessionWorkspaceLabel('/Users/me/codes/dsh/', labels)).toBe('dsh')
+    expect(sessionWorkspaceLabel('C:\\work\\dsh-browser\\', labels)).toBe('dsh-browser')
+  })
+
+  it('has no label when the session has no working directory', () => {
+    expect(sessionWorkspaceLabel(undefined, labels)).toBeUndefined()
+    expect(sessionWorkspaceLabel('', labels)).toBeUndefined()
+  })
+})
+
+describe('sessionPickerLabel', () => {
+  it('prefixes the session title with its workspace', () => {
+    expect(sessionPickerLabel({
+      ...ordinary,
+      cwd: '/Users/me/.dsh/browser-sessions',
+      projections: { asOfSeq: 4, values: { title: '总结页面内容' } },
+    }, labels)).toBe('浏览器-总结页面内容')
+
+    expect(sessionPickerLabel({
+      ...ordinary,
+      cwd: '/Users/me/documents/default-workspace',
+      projections: { asOfSeq: 4, values: { title: '查看磁盘空间占用并清理' } },
+    }, labels)).toBe('默认工作区-查看磁盘空间占用并清理')
+  })
+
+  it('marks a session that never got a title instead of repeating its directory', () => {
+    expect(sessionPickerLabel({
+      ...ordinary,
+      cwd: '/Users/me/.dsh/browser-sessions',
+    }, labels)).toBe('浏览器-未命名会话')
+  })
+
+  it('shows the bare title when the session has no working directory', () => {
+    expect(sessionPickerLabel({
+      ...ordinary,
+      cwd: undefined,
+      projections: { asOfSeq: 4, values: { title: 'alone' } },
+    }, labels)).toBe('alone')
   })
 })
 

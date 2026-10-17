@@ -143,6 +143,12 @@ export interface PanelCopy {
     newSession: string
     sessionPickerLoading: string
     sessionPickerEmpty: string
+    /** Display name of dsh's default workspace, used as a picker prefix. */
+    workspaceDefault: string
+    /** Display name of the extension's own browser-sessions group. */
+    workspaceBrowser: string
+    /** Picker title for a session that never got a durable title. */
+    untitledSession: string
     deleteSession: string
     deleteSessionConfirm: (title: string) => string
     deleteSessionFailed: (reason: string) => string
@@ -368,6 +374,9 @@ const EN: PanelCopy = {
     newSession: 'New chat',
     sessionPickerLoading: 'Loading…',
     sessionPickerEmpty: 'No past sessions yet',
+    workspaceDefault: 'Default workspace',
+    workspaceBrowser: 'Browser',
+    untitledSession: 'Untitled session',
     deleteSession: 'Delete session',
     deleteSessionConfirm: (title) => `Delete “${title}”? Its conversation history will be removed permanently.`,
     deleteSessionFailed: (reason) => `Delete failed: ${reason}`,
@@ -593,6 +602,9 @@ const ZH: PanelCopy = {
     newSession: '新对话',
     sessionPickerLoading: '加载中…',
     sessionPickerEmpty: '暂无历史会话',
+    workspaceDefault: '默认工作区',
+    workspaceBrowser: '浏览器',
+    untitledSession: '未命名会话',
     deleteSession: '删除会话',
     deleteSessionConfirm: (title) => `确定删除「${title}」吗？对话历史将被永久移除。`,
     deleteSessionFailed: (reason) => `删除失败：${reason}`,

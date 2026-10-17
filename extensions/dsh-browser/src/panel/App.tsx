@@ -78,9 +78,11 @@ import {
   resumableSessions,
   sessionAcceptsPrompts,
   sessionDisplayTitle,
+  sessionPickerLabel,
   sessionTitleFromEvent,
   SessionRuntimeCache,
   type SessionPickerEntry,
+  type SessionPickerLabels,
 } from './sessions.ts'
 
 /** One rendered conversation row. */
@@ -2216,6 +2218,13 @@ export function App(): React.JSX.Element {
   // 状态栏只显示连接状态；快照上限是技术细节，在设置页说明（见 hint）。
   const statusText = copy.status[state]
   const sessionMenuTitle = sessionTitle ?? copy.app.newSession
+  // Picker rows read `工作区-会话名`; these labels name the two workspaces the panel
+  // itself creates (dsh's default one and its own browser-sessions group).
+  const pickerLabels: SessionPickerLabels = {
+    defaultWorkspace: copy.app.workspaceDefault,
+    browserSessions: copy.app.workspaceBrowser,
+    untitled: copy.app.untitledSession,
+  }
   const currentModelOption = sessionModels?.options.find((option) => (
     option.provider === sessionModels.current?.provider
     && option.id === sessionModels.current.model
@@ -2537,7 +2546,9 @@ export function App(): React.JSX.Element {
               : (
                 <ul className="session-list">
                   {sessionList.map((entry) => {
-                    const title = sessionDisplayTitle(entry)
+                    // The picker prefixes each row with its workspace, so the same
+                    // title in two workspaces stays distinguishable.
+                    const title = sessionPickerLabel(entry, pickerLabels)
                     return (
                       <li key={entry.sessionId}>
                         <button disabled={sessionSwitchBlocked}

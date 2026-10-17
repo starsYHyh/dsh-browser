@@ -35,6 +35,52 @@ export function projectedSessionTitle(entry: SessionPickerEntry): string | undef
   return normalizeSessionTitle(entry.projections?.values.title)
 }
 
+/** Localized workspace names the picker needs; other workspaces use their folder name. */
+export interface SessionPickerLabels {
+  /** Display name of the default `default-workspace` directory. */
+  defaultWorkspace: string
+  /** Display name of the extension's own `browser-sessions` group. */
+  browserSessions: string
+  /** Shown instead of a title for a session that never got one. */
+  untitled: string
+}
+
+/** Folder names dsh gives the two groups the panel itself surfaces. */
+const DEFAULT_WORKSPACE_DIR = 'default-workspace'
+const BROWSER_SESSIONS_DIR = 'browser-sessions'
+
+/** Last path segment of a working directory, trailing separators removed. */
+function cwdBasename(cwd: string | undefined): string | undefined {
+  const normalized = cwd?.replace(/[\\/]+$/u, '')
+  const name = normalized?.split(/[\\/]/u).at(-1)
+  return name === undefined || name === '' ? undefined : name
+}
+
+/** The workspace a session belongs to, as a short label the picker prefixes. */
+export function sessionWorkspaceLabel(
+  cwd: string | undefined,
+  labels: SessionPickerLabels,
+): string | undefined {
+  const name = cwdBasename(cwd)
+  if (name === undefined) return undefined
+  if (name === DEFAULT_WORKSPACE_DIR) return labels.defaultWorkspace
+  if (name === BROWSER_SESSIONS_DIR) return labels.browserSessions
+  return name
+}
+
+/**
+ * Picker label: `<workspace>-<session title>`, e.g. `浏览器-总结页面内容`.
+ *
+ * The workspace is omitted when the session has no working directory, so a row
+ * never renders a dangling separator; a session without a durable title shows
+ * the localized placeholder instead of repeating its directory name.
+ */
+export function sessionPickerLabel(entry: SessionPickerEntry, labels: SessionPickerLabels): string {
+  const title = projectedSessionTitle(entry) ?? labels.untitled
+  const workspace = sessionWorkspaceLabel(entry.cwd, labels)
+  return workspace === undefined ? title : `${workspace}-${title}`
+}
+
 /** Read one durable title update from the ordinary session event stream. */
 export function sessionTitleFromEvent(event: SessionEventView): string | undefined {
   return event.type === 'session/title' ? normalizeSessionTitle(event.data?.title) : undefined
