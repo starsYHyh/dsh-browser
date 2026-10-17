@@ -27,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { BridgeServer } from './server.ts'
+import { DISCOVERY_PORT, startDiscoveryServer } from './discovery.ts'
 import { BrowserContextInjector } from './browser-context.ts'
 import { registerBrowserTools } from './tools.ts'
 import {
@@ -248,6 +249,24 @@ function mountBridge(
     },
   }
   ctx.effect(() => ctx.webServer.register(configRoute), 'bridge-browser: /ext/bridge-config route')
+
+  // The desktop app binds a random loopback port, so the extension's zero-config
+  // probe cannot guess the address above. Answer the same discovery path on a
+  // fixed port; if the web server already owns it, that route answers instead and
+  // this listener steps aside (EADDRINUSE, logged once).
+  ctx.effect(() => {
+    const discovery = startDiscoveryServer({
+      configPath: BRIDGE_CONFIG_PATH,
+      bridgeWsUrl: () => `ws://127.0.0.1:${ctx.webServer.port}${BRIDGE_PATH}`,
+      onError: (error) => {
+        ctx.logger.info(
+          `browser bridge: discovery port ${DISCOVERY_PORT} is taken (${error.message}); `
+          + 'the web port still answers /ext/bridge-config',
+        )
+      },
+    })
+    return () => { discovery.close() }
+  }, 'bridge-browser: fixed-port discovery listener')
 
   ctx.effect(() => {
     const disposers = registerBrowserTools(ctx, server, {

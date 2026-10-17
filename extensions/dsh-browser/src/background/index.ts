@@ -1294,9 +1294,22 @@ function cancelAllToolCalls(): void {
 async function startBridge(): Promise<void> {
   const revision = ++bridgeStartRevision
   if (panelPorts.size === 0) return
+  const canContinue = (): boolean => revision === bridgeStartRevision && panelPorts.size > 0
   let url = settings.bridgeUrl
+  // A saved address can outlive the port it named — the desktop app binds a random
+  // loopback port per launch — so a failed probe falls back to discovery instead of
+  // leaving the panel stuck on a dead address.
+  if (url !== '' && !(await probeBridge(url))) {
+    if (!canContinue()) return
+    const discovered = await discoverBridge(canContinue)
+    if (!canContinue()) return
+    if (discovered !== undefined) {
+      console.info('[dsh-browser] configured bridge address unreachable; using', discovered)
+      url = discovered
+    }
+  }
   if (url === '') {
-    url = await discoverBridge(() => revision === bridgeStartRevision && panelPorts.size > 0) ?? ''
+    url = await discoverBridge(canContinue) ?? ''
   }
   // Discovery is asynchronous. A panel may have closed or a newer settings
   // update may have started while its fetches were in flight.
