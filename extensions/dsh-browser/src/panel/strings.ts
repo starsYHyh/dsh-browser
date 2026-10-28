@@ -25,7 +25,20 @@ export interface PanelCopy {
     completed: string
     done: string
     labels: Record<string, string>
-    overflow: (shown: string[], total: number) => string
+    /** 「3 个调用」计数徽标。 */
+    calls: (total: number) => string
+    /** 展开/收起整张卡片的无障碍标签。 */
+    expandGroup: string
+    collapseGroup: string
+    /** 单条调用参数的无障碍标签。 */
+    showDetail: string
+    hideDetail: string
+    /** 展开后的「输入 / 输出」段标题。 */
+    input: string
+    output: string
+    failed: string
+    /** 工具没有返回任何文本时的占位。 */
+    emptyOutput: string
   }
   tabHandoff: {
     eyebrow: string
@@ -161,6 +174,8 @@ export interface PanelCopy {
     assistant: string
     assistantWorking: string
     organizingResults: string
+    loadEarlier: string
+    loadingEarlier: string
     thinking: string
     connectedPlaceholder: string
     disconnectedPlaceholder: string
@@ -255,8 +270,26 @@ const EN: PanelCopy = {
       browser_reload: 'Reload page',
       browser_get_text: 'Extract text',
       browser_wait: 'Wait for page',
+      bash: 'Run command',
+      read: 'Read file',
+      write: 'Write file',
+      edit: 'Edit file',
+      skill: 'Load skill',
+      read_image: 'View image',
+      web_search: 'Search the web',
+      web_fetch: 'Fetch page',
+      subagent: 'Start subagent',
+      load_workspace_dependencies: 'Load workspace dependencies',
     },
-    overflow: (shown, total) => `${shown.join(' → ')} → ${total - shown.length} more`,
+    calls: (total) => `${total} call${total === 1 ? '' : 's'}`,
+    expandGroup: 'Show tool calls',
+    collapseGroup: 'Hide tool calls',
+    showDetail: 'Show call details',
+    hideDetail: 'Hide call details',
+    input: 'Input',
+    output: 'Output',
+    failed: 'Failed',
+    emptyOutput: '(no output)',
   },
   tabHandoff: {
     eyebrow: 'Page handoff',
@@ -389,6 +422,8 @@ const EN: PanelCopy = {
     assistant: 'Assistant',
     assistantWorking: 'Assistant is working',
     organizingResults: 'Organizing results',
+    loadEarlier: 'Load earlier messages',
+    loadingEarlier: 'Loading earlier messages…',
     thinking: 'Thinking',
     connectedPlaceholder: 'Tell me what you want to do on this page…',
     disconnectedPlaceholder: 'Connect to dsh to get started',
@@ -483,8 +518,26 @@ const ZH: PanelCopy = {
       browser_reload: '刷新页面',
       browser_get_text: '提取文字',
       browser_wait: '等待页面',
+      bash: '运行命令',
+      read: '读取文件',
+      write: '写入文件',
+      edit: '编辑文件',
+      skill: '加载技能',
+      read_image: '查看图片',
+      web_search: '搜索网页',
+      web_fetch: '抓取网页',
+      subagent: '启动子代理',
+      load_workspace_dependencies: '加载工作区依赖',
     },
-    overflow: (shown, total) => `${shown.join(' → ')} 等${total}个工具`,
+    calls: (total) => `${total} 个调用`,
+    expandGroup: '展开工具调用',
+    collapseGroup: '收起工具调用',
+    showDetail: '展开调用详情',
+    hideDetail: '收起调用详情',
+    input: '输入',
+    output: '输出',
+    failed: '失败',
+    emptyOutput: '（无输出）',
   },
   tabHandoff: {
     eyebrow: '页面交接',
@@ -617,6 +670,8 @@ const ZH: PanelCopy = {
     assistant: '助手',
     assistantWorking: '助手正在处理',
     organizingResults: '正在整理结果',
+    loadEarlier: '加载更早的消息',
+    loadingEarlier: '正在加载更早的消息…',
     thinking: '正在思考',
     connectedPlaceholder: '告诉我想在这个页面做什么…',
     disconnectedPlaceholder: '连接 dsh 后即可开始',

@@ -2,13 +2,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendLiveRow,
+  appendToolCall,
   completeLastTool,
+  formatToolArgs,
   mergeHistoryRows,
+  oldestEventSeq,
+  prependHistoryRows,
   pendingQuestionFromFrame,
   resolvedQuestionFromFrame,
   rowFromEvent,
   textFromBlocks,
+  toolResultOf,
   toolSummary,
+  type Row,
   type SessionEventView,
 } from '../src/panel/events.ts'
 
@@ -103,7 +109,7 @@ describe('toolSummary', () => {
 })
 
 describe('appendLiveRow / completeLastTool', () => {
-  it('merges consecutive tool rows into one line (no tool spam)', () => {
+  it('groups consecutive tool calls into one card (no tool spam)', () => {
     let rows: ReturnType<typeof appendLiveRow> = []
     rows = appendLiveRow(rows, 'user', '帮我操作页面', 1)
     rows = appendLiveRow(rows, 'tool', '读取页面', 2)
@@ -112,8 +118,103 @@ describe('appendLiveRow / completeLastTool', () => {
     rows = completeLastTool(rows, 5)
     expect(rows.map((r) => r.kind)).toEqual(['user', 'tool'])
     expect(rows[1]).toMatchObject({ text: '读取页面 → 点击元素 #7 → 填写内容 #9', status: 'complete' })
+    expect(rows[1]!.tools?.map((item) => item.summary)).toEqual(['读取页面', '点击元素 #7', '填写内容 #9'])
     rows = appendLiveRow(rows, 'assistant', '完成', 6)
     expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
+  })
+
+  it('keeps the card id stable while the group grows and completes', () => {
+    let rows: Row[] = []
+    rows = appendToolCall(rows, { name: 'browser_snapshot', summary: '读取页面', status: 'running', args: '{}' }, 1)
+    const cardId = rows[0]!.id
+    rows = appendToolCall(rows, { name: 'browser_click', summary: '点击元素 #7', status: 'running', args: '{"index":7}' }, 2)
+    rows = completeLastTool(rows, 3)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(cardId)
+    expect(rows[0]!.tools?.map((item) => item.status)).toEqual(['running', 'complete'])
+    // 只有刚完成的那一条被结算，且原始参数留着给单条展开用。
+    expect(rows[0]!.tools?.[1]).toMatchObject({ status: 'complete', args: '{"index":7}' })
+    expect(rows[0]).toMatchObject({ text: '读取页面 → 点击元素 #7', status: 'complete' })
+  })
+})
+
+describe('history paging', () => {
+  it('reports the oldest durable seq of a page', () => {
+    expect(oldestEventSeq([])).toBeNull()
+    expect(oldestEventSeq([{ type: 'turn/start' }, { type: 'user/message', seq: 7 }])).toBe(7)
+  })
+
+  it('prepends older rows and rejoins a tool run cut by the page boundary', () => {
+    let seq = 0
+    const nextSeq = (): number => { seq += 1; return seq }
+    const currentRows = mergeHistoryRows([
+      ev('tool/call', { name: 'browser_click', arguments: '{"index":7}' }),
+      ev('tool/result', {}),
+      ev('assistant/message', { message: { content: [{ type: 'text', text: '完成' }] } }),
+    ], nextSeq, 'zh')
+    const rows = prependHistoryRows(currentRows, [
+      ev('user/message', { content: [{ type: 'text', text: '第一问' }], source: { kind: 'user' } }),
+      ev('tool/call', { name: 'browser_snapshot', arguments: '{}' }),
+      ev('tool/result', {}),
+    ], nextSeq, 'zh')
+    expect(rows.map((row) => row.kind)).toEqual(['user', 'tool', 'assistant'])
+    expect(rows[1]!.tools?.map((item) => item.summary)).toEqual(['读取页面', '点击元素 #7'])
+    expect(rows[1]!.text).toBe('读取页面 → 点击元素 #7')
+  })
+
+  it('leaves the current rows alone when the page renders nothing', () => {
+    const current: Row[] = [{ seq: 1, id: 1, kind: 'info', text: '提示' }]
+    expect(prependHistoryRows(current, [ev('turn/start', {})], () => 2, 'zh')).toBe(current)
+  })
+})
+
+describe('formatToolArgs', () => {
+  it('pretty-prints call arguments and hides empty payloads', () => {
+    expect(formatToolArgs('{"index":7}')).toBe('{\n  "index": 7\n}')
+    expect(formatToolArgs('{}')).toBeNull()
+    expect(formatToolArgs('')).toBeNull()
+    expect(formatToolArgs(undefined)).toBeNull()
+    // 非法 JSON 原样给出，不吞掉模型看到的内容。
+    expect(formatToolArgs('not json')).toBe('not json')
+  })
+})
+
+describe('tool results', () => {
+  it('reads the output text and error flag from a tool/result event', () => {
+    expect(toolResultOf(ev('tool/result', {
+      message: { content: [{ type: 'text', text: 'ok\n' }], isError: false },
+    }))).toEqual({ output: 'ok' })
+    expect(toolResultOf(ev('tool/result', {
+      message: { content: [{ type: 'text', text: 'boom' }], isError: true },
+    }))).toEqual({ output: 'boom', failed: true })
+    expect(toolResultOf(ev('tool/result', { message: { content: [] } }))).toEqual({})
+  })
+
+  it('attaches the result to the completed call in history', () => {
+    let seq = 0
+    const rows = mergeHistoryRows([
+      ev('tool/call', { name: 'bash', arguments: '{"description":"List files","command":"ls"}' }),
+      ev('tool/result', { message: { content: [{ type: 'text', text: 'a.txt' }] } }),
+    ], () => { seq += 1; return seq }, 'zh')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.tools?.[0]).toMatchObject({
+      summary: 'List files',
+      status: 'complete',
+      output: 'a.txt',
+    })
+  })
+
+  it('completes the running call with its own output', () => {
+    let rows: Row[] = []
+    rows = appendToolCall(rows, { name: 'bash', summary: '运行命令', status: 'running', args: '{}' }, 1)
+    rows = completeLastTool(rows, 2, { output: 'done', failed: false })
+    expect(rows[0]!.tools?.[0]).toMatchObject({ status: 'complete', output: 'done' })
+  })
+
+  it('prefers a human description over the bare tool name', () => {
+    expect(toolSummary('bash', '{"description":"Fetch page HTML","command":"curl x"}', 'zh')).toBe('Fetch page HTML')
+    expect(toolSummary('bash', '{"command":"ls"}', 'zh')).toBe('运行命令')
+    expect(toolSummary('bash', '{"command":"ls"}', 'en')).toBe('Run command')
   })
 })
 
@@ -137,8 +238,31 @@ describe('mergeHistoryRows', () => {
     expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
     expect(rows[0]!.text).toBe('操作页面')
     expect(rows[2]!.text).toBe('已点击')
-    // 连续工具调用归并一行（不逐条刷屏）
+    // 一次运行归并成一张卡片（不逐条刷屏），组内逐条保留。
     expect(rows[1]).toMatchObject({ text: '读取页面 → 点击元素 #7 → 点击元素 #8', status: 'complete' })
+    expect(rows[1]!.tools?.map((item) => item.summary)).toEqual(['读取页面', '点击元素 #7', '点击元素 #8'])
+    expect(rows[1]!.tools?.map((item) => item.status)).toEqual(['complete', 'complete', 'complete'])
+  })
+
+  it('keeps one card across the bookkeeping events between two calls', () => {
+    let seq = 0
+    const nextSeq = (): number => { seq += 1; return seq }
+    const rows = mergeHistoryRows([
+      ev('user/message', { content: [{ type: 'text', text: '操作页面' }], source: { kind: 'user' } }),
+      ev('assistant/message', { message: { content: [{ type: 'tool_use', name: 'browser_snapshot' }] } }),
+      ev('tool/call', { name: 'browser_snapshot', arguments: '{}' }),
+      ev('tool/result', {}),
+      // 真实日志里 step/end → step/start → 记账事件夹在两次调用之间。
+      ev('step/end', {}),
+      ev('step/start', {}),
+      ev('session-log-deepseek/delivery-accepted', {}),
+      ev('tool/call', { name: 'browser_click', arguments: '{"index":7}' }),
+      ev('tool/result', {}),
+      ev('assistant/message', { message: { content: [{ type: 'text', text: '已点击' }] } }),
+    ], nextSeq, 'zh')
+    expect(rows.map((r) => r.kind)).toEqual(['user', 'tool', 'assistant'])
+    expect(rows[1]!.tools?.map((item) => item.summary)).toEqual(['读取页面', '点击元素 #7'])
+    expect(rows[1]!.text).toBe('读取页面 → 点击元素 #7')
   })
 
   it('does not restore empty assistant rows from history', () => {
@@ -148,7 +272,14 @@ describe('mergeHistoryRows', () => {
       ev('tool/call', { name: 'browser_snapshot', arguments: '{}' }),
       ev('tool/result', {}),
     ], () => { seq += 1; return seq }, 'zh')
-    expect(rows).toEqual([{ seq: 1, kind: 'tool', text: '读取页面', status: 'complete' }])
+    expect(rows).toEqual([{
+      seq: 1,
+      id: 1,
+      kind: 'tool',
+      text: '读取页面',
+      tools: [{ name: 'browser_snapshot', summary: '读取页面', status: 'complete', args: '{}' }],
+      status: 'complete',
+    }])
   })
 
   it('handles empty history', () => {

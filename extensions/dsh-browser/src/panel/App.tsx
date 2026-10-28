@@ -88,16 +88,23 @@ import {
 /** One rendered conversation row. */
 import {
   appendLiveRow,
+  appendToolCall,
   completeLastTool,
+  formatToolArgs,
+  formatToolOutput,
   mergeHistoryRows,
+  oldestEventSeq,
+  prependHistoryRows,
   pendingQuestionFromFrame,
   resolvedQuestionFromFrame,
   rowFromEvent,
+  toolResultOf,
   toolSummary,
   type Row,
   type PendingQuestion,
   type ResolvedQuestion,
   type SessionEventView,
+  type ToolCallItem,
 } from './events.ts'
 
 function normalizeWebOrigin(value: string): string | null {
@@ -727,8 +734,10 @@ const MessageBody = memo(function MessageBody({
   return <pre>{row.text}</pre>
 })
 
+/** 一次历史读取：`hasMore` 由 Host 标记还有更早的消息没有下发。 */
 interface HistoryPage {
   events: { event: SessionEventView }[]
+  hasMore?: boolean
   assistantStream?: unknown
   snapshotId?: string
   projections?: {
@@ -737,18 +746,111 @@ interface HistoryPage {
   }
 }
 
-const ToolActivity = memo(function ToolActivity({ row, copy }: { row: Row; copy: PanelCopy }): React.JSX.Element {
-  const running = row.status === 'running'
+/**
+ * 一页历史请求的消息上限。Host 默认只给最近 50 条消息（`DEFAULT_MAX_MESSAGES`），
+ * 长会话因此只剩尾巴；这里按宿主允许的上限一次取满，剩下的再用 beforeSeq 翻页。
+ */
+const HISTORY_MAX_MESSAGES = 500
+
+/**
+ * 单条工具调用：展开后按「输入 / 输出」两段展示，中间用分割线隔开，每段
+ * 限高并可滚动（导出仅为测试渲染）。
+ */
+export const ToolStep = memo(function ToolStep({ item, copy }: { item: ToolCallItem; copy: PanelCopy }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const input = formatToolArgs(item.args)
+  const settled = item.status === 'complete'
+  const failed = item.failed === true
+  const expandable = input !== null || settled
+  const running = item.status === 'running'
+  // 失败的工具自动展开：错误信息不该藏在折叠里。
+  useEffect(() => {
+    if (failed) setOpen(true)
+  }, [failed])
   return (
-    <div className={`tool-activity ${running ? 'running' : 'complete'}`} role="status">
-      <span className="tool-icon"><ToolIcon /></span>
-      <span className="tool-copy">
-        <span className="tool-label">{running ? copy.tool.running : copy.tool.complete}</span>
-        <span className="tool-summary">{row.text}</span>
-      </span>
-      <span className="tool-state" aria-label={running ? copy.tool.inProgress : copy.tool.completed}>
-        {running ? <span className="spinner" /> : copy.tool.done}
-      </span>
+    <li className={`tool-step ${running ? 'running' : 'complete'}${failed ? ' failed' : ''}`}>
+      <button type="button" className="tool-step-head"
+        disabled={!expandable}
+        aria-expanded={expandable ? open : undefined}
+        aria-label={expandable ? (open ? copy.tool.hideDetail : copy.tool.showDetail) : undefined}
+        onClick={() => { if (expandable) setOpen((prev) => !prev) }}>
+        <span className="tool-step-dot" aria-hidden="true" />
+        <span className="tool-step-name">{item.summary}</span>
+        <span className="tool-step-state">
+          {running ? <span className="spinner" /> : failed ? copy.tool.failed : copy.tool.done}
+        </span>
+        {expandable && (
+          <span className={`tool-chevron ${open ? 'open' : ''}`} aria-hidden="true"><ChevronDownIcon /></span>
+        )}
+      </button>
+      {open && expandable && <ToolStepDetail item={item} copy={copy} />}
+    </li>
+  )
+})
+
+/**
+ * 一条调用的详情：输入在上、输出在下，中间由 CSS 的分割线隔开，每段限高
+ * 滚动（导出仅为测试渲染）。
+ */
+export const ToolStepDetail = memo(function ToolStepDetail({ item, copy }: { item: ToolCallItem; copy: PanelCopy }): React.JSX.Element {
+  const input = formatToolArgs(item.args)
+  const output = formatToolOutput(item.output)
+  const failed = item.failed === true
+  return (
+    <div className="tool-step-detail">
+      {input !== null && (
+        <div className="tool-step-section">
+          <span className="tool-step-section-title">{copy.tool.input}</span>
+          <pre className="tool-step-code">{input}</pre>
+        </div>
+      )}
+      {item.status === 'complete' && (
+        <div className={`tool-step-section${failed ? ' failed' : ''}`}>
+          <span className="tool-step-section-title">
+            {failed ? `${copy.tool.output} · ${copy.tool.failed}` : copy.tool.output}
+          </span>
+          <pre className="tool-step-code">{output ?? copy.tool.emptyOutput}</pre>
+        </div>
+      )}
+    </div>
+  )
+})
+
+/**
+ * 一次运行的工具调用卡片：卡头可折叠，运行中自动展开、全部完成后自动收起；
+ * 用户手动选择优先，直到下一次运行开始。展开后逐条列出，每条还能单独展开。
+ */
+export const ToolGroup = memo(function ToolGroup({ row, copy }: { row: Row; copy: PanelCopy }): React.JSX.Element {
+  const running = row.status === 'running'
+  const tools = row.tools ?? []
+  // null = 跟随运行状态自动展开/收起；true/false = 用户已经手动选过。
+  const [manual, setManual] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (running) setManual(null)
+  }, [running])
+  const expanded = manual ?? running
+  return (
+    <div className={`tool-activity tool-group ${running ? 'running' : 'complete'}`}>
+      <button type="button" className="tool-group-head"
+        aria-expanded={expanded}
+        aria-label={expanded ? copy.tool.collapseGroup : copy.tool.expandGroup}
+        onClick={() => setManual(!expanded)}>
+        <span className="tool-icon"><ToolIcon /></span>
+        <span className="tool-copy">
+          <span className="tool-label">{running ? copy.tool.running : copy.tool.complete}</span>
+          <span className="tool-summary">{row.text}</span>
+        </span>
+        <span className="tool-count">{copy.tool.calls(tools.length)}</span>
+        <span className="tool-state" aria-live="polite" aria-label={running ? copy.tool.inProgress : copy.tool.completed}>
+          {running ? <span className="spinner" /> : copy.tool.done}
+        </span>
+        <span className={`tool-chevron ${expanded ? 'open' : ''}`} aria-hidden="true"><ChevronDownIcon /></span>
+      </button>
+      {expanded && tools.length > 0 && (
+        <ol className="tool-steps">
+          {tools.map((item, index) => <ToolStep key={`${item.name}-${index}`} item={item} copy={copy} />)}
+        </ol>
+      )}
     </div>
   )
 })
@@ -776,6 +878,13 @@ export function App(): React.JSX.Element {
     return () => { media.removeEventListener('change', apply) }
   }, [settings?.theme])
   const [rows, setRows] = useState<Row[]>([])
+  /** 还有更早的历史可加载（Host 的 `hasMore`）。 */
+  const [historyHasMore, setHistoryHasMore] = useState(false)
+  const [historyLoadingEarlier, setHistoryLoadingEarlier] = useState(false)
+  /** 当前已加载窗口里最早的事件 seq，作为下一页的 beforeSeq。 */
+  const historyBeforeSeqRef = useRef<number | null>(null)
+  /** 加载更早历史前的高度，用于把阅读位置钉回原来的第一条。 */
+  const prependAnchorRef = useRef<number | null>(null)
   const [streamRow, setStreamRow] = useState<Row | null>(null)
   const [draft, setDraft] = useState<ComposerDraft<DraftImage>>(() => emptyComposerDraft())
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -984,6 +1093,9 @@ export function App(): React.JSX.Element {
         stickConversationToBottom()
         setStreamRow(null)
         setRows([])
+        historyBeforeSeqRef.current = null
+        setHistoryHasMore(false)
+        setHistoryLoadingEarlier(false)
         setDraft((current) => ({ ...current, images: [] }))
         setImageLimits(null)
         imageProjectionRef.current = { sessionId: null, seq: Number.NEGATIVE_INFINITY, limits: null }
@@ -1061,6 +1173,18 @@ export function App(): React.JSX.Element {
     // smooth-scroll events disabling follow while content keeps growing.
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'instant' })
   }, [rows, streamRow, working])
+
+  // 加载更早的历史后，把阅读位置钉回原来的第一条：新增的高度留在上方，
+  // 而不是把视图甩到最早的一页。
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current
+    if (anchor === null) return
+    prependAnchorRef.current = null
+    if (atBottomRef.current) return
+    const element = scrollRef.current
+    if (element === null) return
+    element.scrollTop += element.scrollHeight - anchor
+  }, [rows])
 
   // Sibling chrome (session picker, question card, errors, attachments) can
   // resize the scrollport without a scroll event; keep bottom state honest.
@@ -1216,13 +1340,21 @@ export function App(): React.JSX.Element {
     }
     if (payload.event.type === 'tool/call') {
       setWorking(true)
-      const summary = toolSummary(payload.event.data?.name ?? 'tool', payload.event.data?.arguments, locale)
-      setRows((prev) => appendLiveRow(prev, 'tool', summary, nextSeq()))
+      const name = payload.event.data?.name ?? 'tool'
+      const args = payload.event.data?.arguments
+      const summary = toolSummary(name, args, locale)
+      setRows((prev) => appendToolCall(prev, {
+        name,
+        summary,
+        status: 'running',
+        ...(args === undefined ? {} : { args: String(args) }),
+      }, nextSeq()))
       return
     }
     if (payload.event.type === 'tool/result') {
-      // 并入最后一行工具行：调用已完成（不新增行）。
-      setRows((prev) => completeLastTool(prev, nextSeq()))
+      // 并入最后一行工具行：调用已完成（不新增行），并把结果挂成它的输出。
+      const result = toolResultOf(payload.event)
+      setRows((prev) => completeLastTool(prev, nextSeq(), result))
       return
     }
   }
@@ -1281,7 +1413,37 @@ export function App(): React.JSX.Element {
   }
 
   async function readHistory(id: string): Promise<HistoryPage> {
-    return api.rpc<HistoryPage>('session.history', { sessionId: id })
+    return api.rpc<HistoryPage>('session.history', { sessionId: id, maxMessages: HISTORY_MAX_MESSAGES })
+  }
+
+  /** 向更早一页请求历史，把旧消息拼到对话顶部（保持阅读位置）。 */
+  async function loadEarlierHistory(): Promise<void> {
+    const id = sessionRef.current
+    const beforeSeq = historyBeforeSeqRef.current
+    if (id === null || beforeSeq === null || historyLoadingEarlier) return
+    setHistoryLoadingEarlier(true)
+    setError(null)
+    try {
+      const page = await api.rpc<HistoryPage>('session.history', {
+        sessionId: id,
+        beforeSeq,
+        maxMessages: HISTORY_MAX_MESSAGES,
+      })
+      if (sessionRef.current !== id) return
+      const events = page.events.map((entry) => entry.event)
+      const oldestSeq = oldestEventSeq(events)
+      const element = scrollRef.current
+      prependAnchorRef.current = element === null ? null : element.scrollHeight
+      setRows((prev) => prependHistoryRows(prev, events, nextSeq, locale))
+      historyBeforeSeqRef.current = oldestSeq
+      // 空页或 seq 没有继续前移时收尾，避免按钮变成死循环。
+      setHistoryHasMore(page.hasMore === true && oldestSeq !== null && oldestSeq < beforeSeq)
+    } catch (cause) {
+      prependAnchorRef.current = null
+      if (sessionRef.current === id) setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setHistoryLoadingEarlier(false)
+    }
   }
 
   async function rebaselineStream(sessionId: string): Promise<void> {
@@ -1318,6 +1480,10 @@ export function App(): React.JSX.Element {
     const historyTitle = latestSessionTitle(events)
     if (historyTitle !== undefined) setSessionTitle(historyTitle)
     setRows(mergeHistoryRows(events, nextSeq, locale))
+    const oldestSeq = oldestEventSeq(events)
+    historyBeforeSeqRef.current = oldestSeq
+    setHistoryHasMore(history.hasMore === true && oldestSeq !== null)
+    setHistoryLoadingEarlier(false)
     // Only the baseline correlated with this history may have a newer live
     // suffix. A view left by a previous follower is stale, even when revisiting
     // the same session; absent stream state authoritatively clears that view.
@@ -1698,6 +1864,9 @@ export function App(): React.JSX.Element {
     stickConversationToBottom()
     setRows([])
     setStreamRow(null)
+    historyBeforeSeqRef.current = null
+    setHistoryHasMore(false)
+    setHistoryLoadingEarlier(false)
     setDraft(emptyComposerDraft())
     if (!preserveSelection) {
       setSelection(null)
@@ -2589,11 +2758,20 @@ export function App(): React.JSX.Element {
             </button>
           </div>
         )}
+        {historyHasMore && (
+          <div className="history-more">
+            <button type="button" className="history-more-button"
+              disabled={historyLoadingEarlier}
+              onClick={() => { void loadEarlierHistory() }}>
+              {historyLoadingEarlier ? copy.app.loadingEarlier : copy.app.loadEarlier}
+            </button>
+          </div>
+        )}
         {rows.map((row) => (
-          <div key={row.seq} className={`row ${row.kind}`}>
+          <div key={row.id ?? row.seq} className={`row ${row.kind}`}>
             {row.kind === 'assistant' && <span className="assistant-avatar"><img src={whaleUrl} alt={copy.app.assistant} /></span>}
             {row.kind === 'tool'
-              ? <ToolActivity row={row} copy={copy} />
+              ? <ToolGroup row={row} copy={copy} />
               : <MessageBody row={row} sessionId={sessionRef.current ?? ''} api={api} copy={copy} />}
           </div>
         ))}

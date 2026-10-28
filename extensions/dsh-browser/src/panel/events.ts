@@ -11,11 +11,34 @@ import { getUiLocale, type UiLocale } from '../i18n.ts'
 import { imageRefsFromBlocks, type ImageAttachmentRef } from './attachments.ts'
 import { PANEL_COPY } from './strings.ts'
 
+/** One tool invocation inside a tool-activity group. */
+export interface ToolCallItem {
+  /** Raw tool name (`browser_click`), kept for aria labels. */
+  name: string
+  /** Localized one-line label, e.g. 「点击元素 #7」. */
+  summary: string
+  status: 'running' | 'complete'
+  /** Raw JSON arguments, kept so one call can expand into its own input. */
+  args?: string
+  /** Tool result text (already capped by {@link toolResultOf}). */
+  output?: string
+  /** The tool reported an error. */
+  failed?: boolean
+}
+
 /** One rendered conversation row. */
 export interface Row {
   seq: number
+  /**
+   * Identity that survives live updates: `seq` is re-stamped every time a tool
+   * group grows, and a changed React key would remount the card and drop the
+   * collapsed state the user chose.
+   */
+  id?: number
   kind: 'user' | 'assistant' | 'tool' | 'info'
   text: string
+  /** Tool calls of one run, in order (tool rows only). */
+  tools?: ToolCallItem[]
   images?: ImageAttachmentRef[]
   status?: 'running' | 'complete'
   /** Event time in epoch milliseconds, when the source event carried one. */
@@ -32,7 +55,8 @@ export interface SessionEventView {
   data?: {
     content?: unknown
     source?: { kind?: string }
-    message?: { content?: unknown; source?: { kind?: string } }
+    message?: { content?: unknown; source?: { kind?: string }; isError?: unknown }
+    isError?: unknown
     turn?: number
     step?: number
     name?: string
@@ -179,8 +203,16 @@ export function toolSummary(name: string, argsJson: unknown, locale: UiLocale = 
   let summary = PANEL_COPY[locale].tool.labels[name] ?? name
   try {
     const args = JSON.parse(String(argsJson ?? '{}')) as unknown
-    if (typeof args === 'object' && args !== null && 'index' in args) {
-      summary += ` #${String((args as { index?: unknown }).index)}`
+    if (typeof args === 'object' && args !== null) {
+      // 模型给工具写的一句说明（bash 的 description、自定义工具的 description）
+      // 比工具名有用得多：优先展示它。
+      const description = (args as { description?: unknown }).description
+      if (typeof description === 'string' && description.trim() !== '') {
+        summary = truncateSummary(description.trim())
+      }
+      else if ('index' in args) {
+        summary += ` #${String((args as { index?: unknown }).index)}`
+      }
     }
   } catch {
     // 模型参数不可解析：只显示工具名。
@@ -188,7 +220,68 @@ export function toolSummary(name: string, argsJson: unknown, locale: UiLocale = 
   return summary
 }
 
-/** live 合并：若最后一行是工具行则并入（连续工具调用不刷屏），否则新增一行。 */
+/** 头部摘要只留一行，过长的说明截断（完整内容在看详情里）。 */
+function truncateSummary(text: string): string {
+  const MAX_SUMMARY_CHARS = 90
+  return text.length > MAX_SUMMARY_CHARS ? `${text.slice(0, MAX_SUMMARY_CHARS)}…` : text
+}
+
+/** 一次工具运行的折叠摘要：「A → B → C」。 */
+function toolLine(items: readonly ToolCallItem[]): string {
+  return items.map((item) => item.summary).join(' → ')
+}
+
+/**
+ * 把一条调用的原始参数渲染成可展开的详情；没有值得展示的内容时返回 null
+ * （空对象、空串），非法 JSON 原样给出。
+ */
+export function formatToolArgs(args: string | undefined): string | null {
+  if (args === undefined) return null
+  const raw = args.trim()
+  if (raw === '' || raw === '{}' || raw === 'null') return null
+  let pretty = raw
+  try {
+    pretty = JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    // 参数不是合法 JSON：原样展示，模型和用户仍然能看懂。
+  }
+  const MAX_DETAIL_CHARS = 4000
+  return pretty.length > MAX_DETAIL_CHARS ? `${pretty.slice(0, MAX_DETAIL_CHARS)}…` : pretty
+}
+
+/** 一次工具调用的输出：文本原样，超长截断成可滚动的一块。 */
+export function formatToolOutput(output: string | undefined): string | null {
+  if (output === undefined) return null
+  const trimmed = output.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/** 从 tool/result 事件里取出可展示的输出文本与错误标记。 */
+export function toolResultOf(event: SessionEventView): { output?: string; failed?: boolean } {
+  const message = event.data?.message
+  const text = textFromBlocks(message?.content).trim()
+  const failed = message?.isError === true || event.data?.isError === true
+  const MAX_RESULT_CHARS = 8000
+  const output = text === ''
+    ? undefined
+    : (text.length > MAX_RESULT_CHARS ? `${text.slice(0, MAX_RESULT_CHARS)}…` : text)
+  return {
+    ...(output === undefined ? {} : { output }),
+    ...(failed ? { failed: true } : {}),
+  }
+}
+
+/** live 合并：连续工具调用归入同一张卡片，组内逐条保留（可分别展开）。 */
+export function appendToolCall(rows: Row[], item: ToolCallItem, seq: number): Row[] {
+  const last = rows[rows.length - 1]
+  if (last?.kind === 'tool') {
+    const tools = [...(last.tools ?? []), item]
+    return [...rows.slice(0, -1), { ...last, seq, tools, text: toolLine(tools), status: 'running' }]
+  }
+  return [...rows, { seq, id: seq, kind: 'tool', text: item.summary, tools: [item], status: 'running' }]
+}
+
+/** live 合并：若最后一行是工具行则并入，否则新增一行。 */
 export function appendLiveRow(
   rows: Row[],
   kind: Row['kind'],
@@ -197,43 +290,77 @@ export function appendLiveRow(
   images?: ImageAttachmentRef[],
   at?: number,
 ): Row[] {
-  if (kind === 'tool') {
-    const last = rows[rows.length - 1]
-    if (last?.kind === 'tool') {
-      return [...rows.slice(0, -1), { seq, kind: 'tool', text: `${last.text} → ${text}`, status: 'running' }]
-    }
-    return [...rows, { seq, kind, text, status: 'running', ...(at === undefined ? {} : { at }) }]
-  }
-  return [...rows, { seq, kind, text, ...(images === undefined || images.length === 0 ? {} : { images }), ...(at === undefined ? {} : { at }) }]
+  if (kind === 'tool') return appendToolCall(rows, { name: '', summary: text, status: 'running' }, seq)
+  return [...rows, { seq, id: seq, kind, text, ...(images === undefined || images.length === 0 ? {} : { images }), ...(at === undefined ? {} : { at }) }]
 }
 
-/** 标记最后一行工具调用已完成（并入，不新增行）。 */
-export function completeLastTool(rows: Row[], seq: number): Row[] {
+/** 标记最后一个工具调用完成；组内全部完成后整张卡片转为完成态。 */
+export function completeLastTool(
+  rows: Row[],
+  seq: number,
+  result: { output?: string; failed?: boolean } = {},
+): Row[] {
   const last = rows[rows.length - 1]
-  if (last?.kind === 'tool') {
-    return [...rows.slice(0, -1), { ...last, seq, status: 'complete' }]
-  }
-  return rows
+  if (last?.kind !== 'tool') return rows
+  const tools = (last.tools ?? []).map((item, index, all) =>
+    index === all.length - 1 ? { ...item, status: 'complete' as const, ...result } : item)
+  return [...rows.slice(0, -1), { ...last, seq, tools, status: 'complete' }]
 }
 
-/** 历史渲染：连续工具调用归并成一行（tool/call..result 不逐条刷屏；超 3 个折叠计数）。 */
+/** 一页历史里最早一条事件的 seq；没有可用 seq 时返回 null（不可再向前翻页）。 */
+export function oldestEventSeq(events: readonly SessionEventView[]): number | null {
+  for (const event of events) {
+    if (typeof event.seq === 'number') return event.seq
+  }
+  return null
+}
+
+/**
+ * 把更早一页历史拼到当前对话顶部。分页切点可能落在一次工具运行中间，两张
+ * 相邻的工具卡这时接回一张，避免同一次运行显示成两段。
+ */
+export function prependHistoryRows(
+  rows: Row[],
+  events: readonly SessionEventView[],
+  nextSeq: () => number,
+  locale: UiLocale = getUiLocale(),
+): Row[] {
+  const older = mergeHistoryRows([...events], nextSeq, locale)
+  if (older.length === 0) return rows
+  const lastOlder = older[older.length - 1]
+  const firstCurrent = rows[0]
+  if (lastOlder?.kind === 'tool' && firstCurrent?.kind === 'tool') {
+    const tools = [...(lastOlder.tools ?? []), ...(firstCurrent.tools ?? [])]
+    const rejoined: Row = {
+      ...lastOlder,
+      tools,
+      text: tools.map((item) => item.summary).join(' → '),
+      status: firstCurrent.status ?? lastOlder.status,
+    }
+    return [...older.slice(0, -1), rejoined, ...rows.slice(1)]
+  }
+  return [...older, ...rows]
+}
+
+/** 历史渲染：一次运行的工具调用归并成一张卡片，组内逐条保留（不逐条刷屏，
+ * 也不丢细节——展开卡片即可逐条回看）。
+ */
 export function mergeHistoryRows(
   events: SessionEventView[],
   nextSeq: () => number,
   locale: UiLocale = getUiLocale(),
 ): Row[] {
   const rows: Row[] = []
-  let pendingTool: { items: string[]; total: number; at?: number } | null = null
+  let pendingTool: { items: ToolCallItem[]; at?: number } | null = null
   const flushTool = (): void => {
     if (pendingTool === null) return
-    const shown = pendingTool.items.slice(0, 3)
-    const label = pendingTool.total > shown.length
-      ? PANEL_COPY[locale].tool.overflow(shown, pendingTool.total)
-      : shown.join(' → ')
+    const seq = nextSeq()
     rows.push({
-      seq: nextSeq(),
+      seq,
+      id: seq,
       kind: 'tool',
-      text: label,
+      text: toolLine(pendingTool.items),
+      tools: pendingTool.items,
       status: 'complete',
       ...(pendingTool.at === undefined ? {} : { at: pendingTool.at }),
     })
@@ -241,20 +368,39 @@ export function mergeHistoryRows(
   }
   for (const ev of events) {
     if (ev.type === 'tool/call') {
-      const summary = toolSummary(ev.data?.name ?? 'tool', ev.data?.arguments, locale)
+      const name = ev.data?.name ?? 'tool'
+      const args = ev.data?.arguments
+      const item: ToolCallItem = {
+        name,
+        summary: toolSummary(name, args, locale),
+        status: 'complete',
+        ...(args === undefined ? {} : { args: String(args) }),
+      }
       if (pendingTool === null) {
-        pendingTool = { items: [summary], total: 1, ...(ev.time === undefined ? {} : { at: ev.time }) }
+        pendingTool = { items: [item], ...(ev.time === undefined ? {} : { at: ev.time }) }
       }
       else {
-        pendingTool.items.push(summary)
-        pendingTool.total += 1
+        pendingTool.items.push(item)
       }
       continue
     }
-    if (ev.type === 'tool/result') continue
-    flushTool()
+    if (ev.type === 'tool/result') {
+      // 结果挂到这次运行的最后一条调用上：输入/输出成对展示。
+      const pending = pendingTool
+      const last = pending?.items[pending.items.length - 1]
+      if (pending !== null && last !== undefined) {
+        pending.items[pending.items.length - 1] = { ...last, status: 'complete', ...toolResultOf(ev) }
+      }
+      continue
+    }
+    // 只有真正产生一行的消息才结束工具组：step/start、step/end、
+    // session-log-deepseek/* 这类记账事件，以及只有 tool_use 块的
+    // assistant/message 都不该把一次运行切成一堆单条卡片。
     const row = rowFromEvent(ev)
-    if (row !== null) rows.push({ ...row, seq: nextSeq() })
+    if (row === null) continue
+    flushTool()
+    const seq = nextSeq()
+    rows.push({ ...row, seq, id: seq })
   }
   flushTool()
   return rows

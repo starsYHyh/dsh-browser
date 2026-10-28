@@ -22,6 +22,22 @@ describe('panel layout styles', () => {
     expect(settingsChildrenRule).toMatch(/(?:^|\n)\s*flex-shrink:\s*0;/)
   })
 
+  it('gives tool cards the conversation width and scrollable io blocks', () => {
+    const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
+    const cardRule = styles.match(/\.tool-activity\s*\{([^}]*)\}/)?.[1]
+    const codeRule = styles.match(/\.tool-activity \.tool-step-code\s*\{([^}]*)\}/)?.[1]
+    const dividerRule = styles.match(/\.tool-activity \.tool-step-section \+ \.tool-step-section\s*\{([^}]*)\}/)?.[1]
+
+    expect(cardRule).toBeDefined()
+    expect(cardRule).toMatch(/(?:^|\n)\s*width:\s*100%;/)
+    expect(cardRule).not.toContain('410px')
+    expect(codeRule).toBeDefined()
+    expect(codeRule).toMatch(/(?:^|\n)\s*max-height:\s*180px;/)
+    expect(codeRule).toMatch(/(?:^|\n)\s*overflow:\s*auto;/)
+    expect(dividerRule).toBeDefined()
+    expect(dividerRule).toMatch(/border-top:\s*1px solid/)
+  })
+
   it('places an upward model menu on its own row under the composer', () => {
     const styles = readFileSync(`${process.cwd()}/src/panel/styles.css`, 'utf8')
     const modelRule = styles.match(/\.composer-model\s*\{([^}]*)\}/)?.[1]
