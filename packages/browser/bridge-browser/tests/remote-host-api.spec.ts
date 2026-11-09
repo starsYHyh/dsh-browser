@@ -44,10 +44,18 @@ function harness(options: {
       },
     },
   }
+  // dsh 0.2.1+ requires a live PeerScope; the adapter must reuse this instance.
+  const peer = {
+    signal: new AbortController().signal,
+    interactions: 'answer' as const,
+    principal: { kind: 'owner' as const },
+    dispose: async () => {},
+  }
   const connection: HostConnectionLike = {
     createSharedFetchHandler: () => ({ fetch }),
+    createPeer: () => peer,
   }
-  return { api: createRemoteHostApi(gateway, connection), invoke, open, fetch, requestBodies }
+  return { api: createRemoteHostApi(gateway, connection), invoke, open, fetch, requestBodies, peer }
 }
 
 describe('dsh 0.2 Remote Host adapter', () => {
@@ -87,17 +95,14 @@ describe('dsh 0.2 Remote Host adapter', () => {
   it('passes the signal in the fifth argument for DSH Desktop 2.x streams', async () => {
     const open = vi.fn(async (_endpoint: string, _payload: unknown, uplink: AsyncIterable<unknown>, peer: unknown, signal: AbortSignal) => {
       expect(typeof uplink[Symbol.asyncIterator]).toBe('function')
-      // dsh 0.2.1 refuses a call whose peer is missing/disposed; an in-process
-      // Host caller presents a live owner peer bound to the call's lifetime.
-      expect(peer).toEqual({
-        signal,
-        interactions: 'answer',
-        principal: { kind: 'owner' },
-      })
+      // dsh 0.2.1+ refuses a call whose peer is missing/disposed; the adapter
+      // names the one Peer the Connection minted for this bridge.
+      expect(peer).toMatchObject({ interactions: 'answer', principal: { kind: 'owner' } })
       expect(signal).toBeInstanceOf(AbortSignal)
       return { async *[Symbol.asyncIterator]() { yield { type: 'ready', clientId: 'test', host: {} }; await abortWait(signal) } }
     })
-    const { api } = harness({ open })
+    const { api, peer } = harness({ open })
+    expect(peer.signal).toBeInstanceOf(AbortSignal)
     const controller = new AbortController()
     const iterator = api.events(controller.signal)[Symbol.asyncIterator]()
     const pending = iterator.next()
@@ -109,7 +114,7 @@ describe('dsh 0.2 Remote Host adapter', () => {
 
   it('presents the same owner peer on unary Gateway calls', async () => {
     const calls: Array<Record<string, unknown>> = []
-    const { api } = harness({
+    const { api, peer } = harness({
       invoke: async (request) => {
         calls.push(request as unknown as Record<string, unknown>)
         return { models: [{ id: 'deepseek-chat' }], selected: undefined, next: undefined }
@@ -117,12 +122,11 @@ describe('dsh 0.2 Remote Host adapter', () => {
     })
 
     await api.call(call('session.models', {}))
+    await api.call(call('session.models', {}, 'rpc-2'))
 
-    expect(calls[0]?.peer).toEqual({
-      signal: calls[0]?.signal,
-      interactions: 'answer',
-      principal: { kind: 'owner' },
-    })
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    for (const request of calls) expect(request.peer).toBe(peer)
+    expect(peer).toMatchObject({ interactions: 'answer', principal: { kind: 'owner' } })
   })
   it('preserves V3 durable streams and orders reconnect baselines before transient frames without advancing the durable cursor', async () => {
     const baseline = {

@@ -51,7 +51,7 @@ import { isRecord, type BrowserHostApi } from './host-api.ts'
 export const name = 'bridge-browser'
 
 /** Build marker reported by discovery, so a running dsh can be identified. */
-const BRIDGE_BUILD = '0.0.9'
+const BRIDGE_BUILD = '0.0.10'
 
 /** Services required by this plugin. */
 export const inject = ['webServer', 'typertGateway', 'connection', 'tools', 'agents']

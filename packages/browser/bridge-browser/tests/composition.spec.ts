@@ -58,7 +58,7 @@ const RemoteApiHost = {
   apply(ctx: Context, config: { cwd: string }): void {
     const gateway = {
       wireStream: {
-        async open(endpoint: string, _payload: unknown, signal: AbortSignal): Promise<AsyncIterable<unknown>> {
+        async open(endpoint: string, _payload: unknown, _uplink: unknown, _peer: unknown, signal: AbortSignal): Promise<AsyncIterable<unknown>> {
           if (endpoint === '$events') {
             return {
               async *[Symbol.asyncIterator]() {
