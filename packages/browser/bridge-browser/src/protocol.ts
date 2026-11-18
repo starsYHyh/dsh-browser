@@ -68,6 +68,12 @@ export interface BridgeCaps {
   snapshotMaxChars: number
   /** Upper bound on interactive inventory items per snapshot (plugin config). */
   maxInteractiveItems: number
+  /**
+   * Workspace the bridge creates its own sessions in. `''` — or an older bridge
+   * that omits the field — means those sessions stay ungrouped, so the picker
+   * keeps showing every workspace instead of filtering.
+   */
+  sessionWorkspace?: string
 }
 
 /** Frames sent by the extension to the bridge plugin. */

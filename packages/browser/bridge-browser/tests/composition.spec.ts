@@ -344,7 +344,14 @@ describe('real Loader composition', () => {
     const client = await connectReady(port)
     expect(client.frames.find((f) => f.t === 'hello.ok')).toEqual({
       t: 'hello.ok',
-      caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 },
+      // `sessionWorkspace` lets the panel scope its session picker to the
+      // conversations this bridge created.
+      caps: {
+        textOnly: true,
+        snapshotMaxChars: 32_000,
+        maxInteractiveItems: 60,
+        sessionWorkspace: join(root, 'browser-sessions'),
+      },
     })
 
     // Gateway RPC round-trip against the real session store.

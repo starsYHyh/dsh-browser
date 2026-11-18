@@ -51,7 +51,7 @@ import { isRecord, type BrowserHostApi } from './host-api.ts'
 export const name = 'bridge-browser'
 
 /** Build marker reported by discovery, so a running dsh can be identified. */
-const BRIDGE_BUILD = '0.0.10'
+const BRIDGE_BUILD = '0.0.11'
 
 /** Services required by this plugin. */
 export const inject = ['webServer', 'typertGateway', 'connection', 'tools', 'agents']
@@ -226,6 +226,9 @@ function mountBridge(
       textOnly: true,
       snapshotMaxChars: resolved.snapshotMaxChars,
       maxInteractiveItems: resolved.maxInteractiveItems,
+      // The panel filters its session picker by this workspace: desktop
+      // conversations live elsewhere and must not leak into the side panel.
+      sessionWorkspace: resolved.sessionWorkspacePath,
     },
     injectBrowserSnapshot: (sessionId, snapshot) => { browserContext.inject(sessionId, snapshot) },
     purgeSession,

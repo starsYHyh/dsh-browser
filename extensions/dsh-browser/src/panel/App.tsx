@@ -75,6 +75,7 @@ import { isNearScrollBottom, restoreConversationScroll } from './scroll.ts'
 import {
   latestSessionTitle,
   projectedSessionTitle,
+  browserSessions,
   resumableSessions,
   sessionAcceptsPrompts,
   sessionDisplayTitle,
@@ -1662,7 +1663,10 @@ export function App(): React.JSX.Element {
   /** Filter the raw catalog for the manual history picker. */
   async function loadVisibleSessions(): Promise<SessionPickerEntry[]> {
     const { items, archived } = await loadSessionCatalog()
-    return resumableSessions(items).filter((entry) => !archived.has(entry.sessionId))
+    // Only the extension's own conversations: desktop sessions live in other
+    // workspaces and used to fill this list.
+    const visible = browserSessions(resumableSessions(items), caps?.sessionWorkspace)
+    return visible.filter((entry) => !archived.has(entry.sessionId))
   }
 
   /** Restore only the exact current-page conversation, otherwise create a chat. */
@@ -2387,11 +2391,9 @@ export function App(): React.JSX.Element {
   // 状态栏只显示连接状态；快照上限是技术细节，在设置页说明（见 hint）。
   const statusText = copy.status[state]
   const sessionMenuTitle = sessionTitle ?? copy.app.newSession
-  // Picker rows read `工作区-会话名`; these labels name the two workspaces the panel
-  // itself creates (dsh's default one and its own browser-sessions group).
+  // Every picker row now belongs to the extension's own workspace, so the label
+  // is just the session title.
   const pickerLabels: SessionPickerLabels = {
-    defaultWorkspace: copy.app.workspaceDefault,
-    browserSessions: copy.app.workspaceBrowser,
     untitled: copy.app.untitledSession,
   }
   const currentModelOption = sessionModels?.options.find((option) => (
@@ -2715,8 +2717,7 @@ export function App(): React.JSX.Element {
               : (
                 <ul className="session-list">
                   {sessionList.map((entry) => {
-                    // The picker prefixes each row with its workspace, so the same
-                    // title in two workspaces stays distinguishable.
+                    // Rows list only the extension's workspace, so no prefix is needed.
                     const title = sessionPickerLabel(entry, pickerLabels)
                     return (
                       <li key={entry.sessionId}>
